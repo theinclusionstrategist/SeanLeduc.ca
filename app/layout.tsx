@@ -53,7 +53,7 @@ export const metadata: Metadata = {
     siteName: 'Sean Leduc - The Inclusion Strategist',
     images: [
       {
-        url: `${siteUrl}/og-image.png`,
+        url: `${siteUrl}/og`,
         width: 1200,
         height: 630,
         alt: 'Sean Leduc - The Inclusion Strategist',
@@ -65,7 +65,7 @@ export const metadata: Metadata = {
     title: 'Sean Leduc | The Inclusion Strategist & Keynote Speaker',
     description:
       'Financial Strategy, Motivational Keynote Speaking, and U.N.I.T.E. Charity in Ontario.',
-    images: [`${siteUrl}/og-image.png`],
+    images: [`${siteUrl}/og`],
   },
   robots: {
     index: true,
@@ -112,7 +112,7 @@ export default function RootLayout({
         name: 'Sean Leduc - The Inclusion Strategist',
         url: siteUrl,
         logo: `${siteUrl}/logo.png`,
-        image: `${siteUrl}/og-image.png`,
+        image: `${siteUrl}/og`,
         address: {
           '@type': 'PostalAddress',
           addressLocality: 'Carleton Place',
