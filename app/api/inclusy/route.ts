@@ -1,67 +1,209 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 
-// Initialize the Gemini API client using your Workspace / AI Studio key
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
+// ============================================================================
+// Types & Interfaces
+// ============================================================================
+export interface Message {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+}
 
-const SYSTEM_INSTRUCTION = `
-You are "Inclusy" (pronounced "inclus-eee"), the digital concierge and AI strategist for Sean Leduc (SeanLeduc.ca).
-Your goal is to warmly welcome visitors, share Sean's brand story when relevant, answer questions, and direct leads to the appropriate pillar.
+export interface InclusyRequestBody {
+  messages: Message[];
+  sessionId: string;
+  leadContext?: {
+    email?: string;
+    name?: string;
+    phone?: string;
+  };
+}
 
-ABOUT SEAN LEDUC:
-- Pillar 1 (60% focus): "The Inclusion Strategist" — Licensed Ontario Financial & Insurance Strategist.
-  - Wealth & Savings: FHSA, TFSA, RRSP, RESP, RDSP (Disability Tax Credit/special needs authority), Non-Registered.
-  - Personal Risk Protection: Term Life, Whole Life, Disability, Critical Illness, Health & Dental, Travel.
-  - Business & Corporate: Corporate Universal Life (UL), Whole Life, Key Person Insurance, Buy-Sell Funding, Business Overhead Expense, Group Benefits.
-  - Referrals: Can refer clients out for Home, Auto, and Pet insurance.
-  - Geographic Scope: Entire province of Ontario (rooted in Carleton Place, ON).
+// ============================================================================
+// Service Initialization
+// ============================================================================
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-- Pillar 2 (25% focus): Motivational Speaking — Keynote speaker on corporate resilience, mindset, and navigating radical change ("One More Step").
+// Fail-fast environment check for critical infrastructure
+if (!process.env.GEMINI_API_KEY) {
+  console.error('[CRITICAL] Missing GEMINI_API_KEY environment variable.');
+}
 
-- Pillar 3 (15% focus): U.N.I.T.E. Charity — Founder & President of Unified National Inclusion Through Exercise, based in Carleton Place, ON. Fostering inclusion through adaptive sports and community programs.
+const supabase =
+  supabaseUrl && supabaseServiceKey
+    ? createClient(supabaseUrl, supabaseServiceKey)
+    : null;
 
-SEAN'S CORE STORY ("The Power of Perspective"):
-- Sean spent nearly 2 years in a wheelchair following a major physical challenge and fought through the process of relearning to walk.
-- This lived experience gives him rare authenticity in risk planning, disability protection, corporate mindset, and grassroots community inclusion.
+// ============================================================================
+// Inclusy Brand Engine & System Prompt
+// ============================================================================
+const INCLUSY_SYSTEM_INSTRUCTION = `
+You are Inclusy (pronounced "inclus-eee"), the elite AI Concierge for Sean Leduc—The Inclusion Strategist based in Carleton Place, Ontario.
 
-TONE & BEHAVIOR:
-- Professional, empathetic, authentic, inspiring, and concise. Never sound like a cold corporate robot.
-- Maintain clarity: guide visitors politely without making official financial guarantees.
-- If a user asks about insurance or financial planning, gather basic details (personal vs corporate, location in Ontario) and offer to connect them with Sean directly.
+### Core Philosophy & Positioning
+- Brand Anchor: "The Power of Perspective."
+- Value Proposition: You seamlessly bridge Sean's three core pillars:
+  1. Financial & Insurance Strategy (Ontario-wide: Life, CI, DI, RRSP, RDSP, TFSA, FHSA, Whole Life, and Corporate Solutions including Key Person, Buy-Sell, and Group Benefits).
+  2. Motivational Keynote Speaking (Resilience, overcoming mobility challenges, perspective shift).
+  3. U.N.I.T.E. Charity (Community empowerment and inclusion initiatives).
+
+### Communication Guidelines
+- Tone: Empathetic, grounded, authoritative yet approachable, transparent, and concise.
+- Never use rigid or aggressive financial jargon (avoid words like "ironclad"). Focus on purpose, clarity, and perspective.
+- Actively guide users toward booking a strategy consultation with Sean when appropriate.
+- Region Focus: Carleton Place, Lanark County, Ottawa, and province-wide Ontario.
 `;
 
-export async function POST(req: Request) {
-  try {
-    const { messages } = await req.json();
+// ============================================================================
+// Handler Engine
+// ============================================================================
+export async function POST(req: NextRequest) {
+  const startTime = Date.now();
 
-    if (!process.env.GEMINI_API_KEY) {
+  try {
+    // 1. Payload Validation
+    const body: InclusyRequestBody = await req.json();
+    const { messages, sessionId, leadContext } = body;
+
+    if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
-        { error: 'Gemini API key is missing. Add GEMINI_API_KEY to your .env.local file.' },
-        { status: 500 }
+        { error: 'Invalid payload: Message history is required.' },
+        { status: 400 }
       );
     }
 
-    // Using Gemini 1.5 Flash for ultra-low latency and low cost
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
-      systemInstruction: SYSTEM_INSTRUCTION,
-    });
+    const latestUserMessage = messages[messages.length - 1]?.content;
 
-    // Format chat history for Gemini SDK
-    const contents = messages.map((m: { role: string; content: string }) => ({
-      role: m.role === 'user' ? 'user' : 'model',
-      parts: [{ text: m.content }],
+    if (!latestUserMessage) {
+      return NextResponse.json(
+        { error: 'Empty message payload.' },
+        { status: 400 }
+      );
+    }
+
+    // 2. Format Messages for Gemini API (REST v1beta)
+    const formattedContents = messages.map((msg) => ({
+      role: msg.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: msg.content }],
     }));
 
-    const result = await model.generateContent({ contents });
-    const responseText = result.response.text();
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      throw new Error('Gemini API key is not configured on the server.');
+    }
 
-    return NextResponse.json({ reply: responseText });
-  } catch (error) {
-    console.error('Inclusy API Error:', error);
+    // 3. Dispatch to Gemini 1.5 Flash API
+    const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+
+    const geminiResponse = await fetch(geminiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        system_instruction: {
+          parts: [{ text: INCLUSY_SYSTEM_INSTRUCTION }],
+        },
+        contents: formattedContents,
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 800,
+          topP: 0.9,
+        },
+      }),
+    });
+
+    if (!geminiResponse.ok) {
+      const errorData = await geminiResponse.json();
+      console.error('[Gemini API Error]:', errorData);
+      throw new Error(`Gemini service responded with status ${geminiResponse.status}`);
+    }
+
+    const geminiData = await geminiResponse.json();
+    const assistantReply =
+      geminiData.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "I'm sorry, I couldn't generate a response right now. Please reach out to Sean directly.";
+
+    const latencyMs = Date.now() - startTime;
+
+    // 4. Asynchronous Enterprise Logging (Supabase)
+    if (supabase) {
+      // Fire and forget logging so user latency isn't delayed
+      (async () => {
+        try {
+          // Log interaction
+          await supabase.from('ai_interactions').insert({
+            session_id: sessionId || 'anonymous',
+            user_prompt: latestUserMessage,
+            ai_response: assistantReply,
+            latency_ms: latencyMs,
+            created_at: new Date().toISOString(),
+          });
+
+          // Intent Recognition / Lead Auto-Detection
+          const intentTags = detectIntents(latestUserMessage);
+          if (intentTags.length > 0 || leadContext?.email) {
+            await supabase.from('leads').upsert(
+              {
+                session_id: sessionId,
+                email: leadContext?.email || null,
+                name: leadContext?.name || null,
+                phone: leadContext?.phone || null,
+                intent_tags: intentTags,
+                last_active: new Date().toISOString(),
+              },
+              { onConflict: 'session_id' }
+            );
+          }
+        } catch (dbError) {
+          console.error('[Supabase Logging Error]:', dbError);
+        }
+      })();
+    }
+
+    // 5. Return Structured Success Response
+    return NextResponse.json({
+      reply: assistantReply,
+      sessionId: sessionId || 'anon-' + Date.now(),
+      metrics: {
+        latencyMs,
+      },
+    });
+  } catch (error: any) {
+    console.error('[Inclusy Route Handler Error]:', error.message);
     return NextResponse.json(
-      { error: 'Failed to generate response from Inclusy.' },
+      {
+        error: 'Inclusy encountered an internal communication error.',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      },
       { status: 500 }
     );
   }
+}
+
+// ============================================================================
+// Helper: Automated Business Intent Detection
+// ============================================================================
+function detectIntents(message: string): string[] {
+  const tags: string[] = [];
+  const lower = message.toLowerCase();
+
+  if (lower.includes('keyperson') || lower.includes('buy sell') || lower.includes('group benefit') || lower.includes('corporate')) {
+    tags.push('Corporate Financial');
+  }
+  if (lower.includes('rdsp') || lower.includes('disability') || lower.includes('dtc')) {
+    tags.push('Disability & Inclusive Planning');
+  }
+  if (lower.includes('rrsp') || lower.includes('tfsa') || lower.includes('fhsa') || lower.includes('life insurance')) {
+    tags.push('Personal Advisory');
+  }
+  if (lower.includes('speak') || lower.includes('keynote') || lower.includes('event') || lower.includes('workshop')) {
+    tags.push('Motivational Speaking');
+  }
+  if (lower.includes('charity') || lower.includes('unite') || lower.includes('donate') || lower.includes('sponsor')) {
+    tags.push('UNITE Charity');
+  }
+
+  return tags;
 }
