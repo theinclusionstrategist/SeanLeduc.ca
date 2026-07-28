@@ -1,169 +1,228 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { MessageSquare, X, Send, Sparkles, Bot, User } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 
-interface Message {
+export interface Message {
   role: 'user' | 'assistant';
   content: string;
 }
 
 export default function InclusyWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [input, setInput] = useState('');
-  const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
     {
       role: 'assistant',
       content:
-        "Hello! I'm **Inclusy**, Sean Leduc's digital assistant. How can I help you today? Whether you're exploring Ontario financial strategies, corporate keynote speaking, or U.N.I.T.E. Charity initiatives in Carleton Place—I've got you covered!",
+        "Hello! I'm Inclusy, Sean Leduc's AI Concierge. How can I assist you with Financial Strategy, Motivational Speaking, or the U.N.I.T.E. Charity today?",
     },
   ]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState('');
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
-
+  // Initialize persistent session ID across browser refreshes
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, loading]);
+    let existingSession = localStorage.getItem('inclusy_session_id');
+    if (!existingSession) {
+      existingSession = 'session-' + Math.random().toString(36).substring(2, 11) + '-' + Date.now();
+      localStorage.setItem('inclusy_session_id', existingSession);
+    }
+    setSessionId(existingSession);
+  }, []);
 
-  const handleSend = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!input.trim() || loading) return;
+  // Auto-scroll to latest message
+  useEffect(() => {
+    if (isOpen) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, isOpen]);
 
-    const userMsg = input.trim();
-    setInput('');
+  const handleSend = async (textToSend?: string) => {
+    const text = textToSend || input;
+    if (!text.trim() || isLoading) return;
 
-    const updatedMessages: Message[] = [...messages, { role: 'user', content: userMsg }];
+    const userMessage: Message = { role: 'user', content: text };
+    const updatedMessages = [...messages, userMessage];
+
     setMessages(updatedMessages);
-    setLoading(true);
+    if (!textToSend) setInput('');
+    setIsLoading(true);
 
     try {
-      const res = await fetch('/api/inclusy', {
+      const response = await fetch('/api/inclusy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: updatedMessages }),
+        body: JSON.stringify({
+          messages: updatedMessages,
+          sessionId: sessionId,
+        }),
       });
 
-      const data = await res.json();
-      if (data.reply) {
-        setMessages([...updatedMessages, { role: 'assistant', content: data.reply }]);
-      } else {
-        setMessages([
-          ...updatedMessages,
-          { role: 'assistant', content: "I'm having trouble connecting right now. Please try again in a moment!" },
-        ]);
+      if (!response.ok) {
+        throw new Error('Failed to fetch response from Inclusy engine.');
       }
-    } catch {
-      setMessages([
-        ...updatedMessages,
-        { role: 'assistant', content: "An error occurred. Please reach out directly to Sean's team." },
+
+      const data = await response.json();
+      
+      setMessages((prev) => [
+        ...prev,
+        { role: 'assistant', content: data.reply },
+      ]);
+    } catch (error) {
+      console.error('Inclusy Client Error:', error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: "I'm currently unable to connect to the network. Please reach out to Sean directly via email or call.",
+        },
       ]);
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
+  const quickPrompts = [
+    "Financial & Insurance Advisory",
+    "Book Sean for Keynote Speaking",
+    "U.N.I.T.E. Charity Initiatives",
+  ];
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 font-sans">
+    <div className="fixed bottom-5 right-5 z-50 font-sans">
       {/* Floating Toggle Button */}
       {!isOpen && (
-        <motion.button
-          whileHover={{ scale: 1.05 }}
-          whileTap={{ scale: 0.95 }}
+        <button
           onClick={() => setIsOpen(true)}
-          className="flex items-center gap-3 px-5 py-3.5 bg-gradient-to-r from-indigo-600 to-sky-500 text-white rounded-full shadow-2xl hover:shadow-indigo-500/25 border border-white/20 transition-all"
+          className="flex items-center gap-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-semibold py-3.5 px-5 rounded-full shadow-2xl transition-all transform hover:scale-105 active:scale-95 border border-blue-400/30 backdrop-blur-md"
+          aria-label="Open Inclusy AI Concierge"
         >
-          <Sparkles className="w-5 h-5 animate-pulse text-amber-300" />
-          <span className="font-semibold text-sm">Ask Inclusy</span>
-        </motion.button>
+          <div className="relative">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            </svg>
+            <span className="absolute -top-1 -right-1 flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+          </div>
+          <span className="text-sm tracking-wide">Ask Inclusy</span>
+        </button>
       )}
 
-      {/* Floating Chat Modal */}
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 20, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="w-[380px] sm:w-[420px] h-[580px] bg-[#0d1117]/95 border border-white/10 backdrop-blur-2xl rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-          >
-            {/* Modal Header */}
-            <div className="p-4 bg-gradient-to-r from-indigo-950/80 to-slate-900/80 border-b border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                  <Bot size={22} />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white text-base leading-none">Inclusy</h3>
-                  <span className="text-xs text-indigo-400">Sean Leduc AI Concierge</span>
+      {/* Main Chat Modal Container */}
+      {isOpen && (
+        <div className="w-[92vw] sm:w-[420px] h-[580px] max-h-[85vh] bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl transition-all">
+          
+          {/* Header */}
+          <div className="bg-slate-800/90 border-b border-slate-700/60 p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-inner">
+                ⚡
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-base leading-tight">Inclusy AI</h3>
+                <p className="text-xs text-blue-400 font-medium">Sean Leduc's Concierge</p>
+              </div>
+            </div>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors"
+              aria-label="Close Chat"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Quick Prompts Bar */}
+          <div className="bg-slate-800/40 border-b border-slate-800 px-3 py-2 flex gap-2 overflow-x-auto no-scrollbar">
+            {quickPrompts.map((prompt, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleSend(prompt)}
+                disabled={isLoading}
+                className="whitespace-nowrap bg-slate-800 hover:bg-blue-600/30 text-slate-300 hover:text-blue-200 border border-slate-700 text-xs py-1 px-3 rounded-full transition-all disabled:opacity-50 flex-shrink-0"
+              >
+                {prompt}
+              </button>
+            ))}
+          </div>
+
+          {/* Message History Feed */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            {messages.map((msg, index) => (
+              <div
+                key={index}
+                className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {msg.role === 'assistant' && (
+                  <div className="w-7 h-7 rounded-full bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-300 text-xs flex-shrink-0 mt-0.5">
+                    🤖
+                  </div>
+                )}
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
+                    msg.role === 'user'
+                      ? 'bg-blue-600 text-white rounded-br-none shadow-md'
+                      : 'bg-slate-800/90 text-slate-200 border border-slate-700/60 rounded-bl-none'
+                  }`}
+                >
+                  {msg.content}
                 </div>
               </div>
-              <button
-                onClick={() => setIsOpen(false)}
-                className="text-gray-400 hover:text-white p-1 rounded-lg hover:bg-white/10 transition"
-              >
-                <X size={20} />
-              </button>
-            </div>
+            ))}
 
-            {/* Conversation Area */}
-            <div className="flex-1 p-4 overflow-y-auto space-y-4 text-sm">
-              {messages.map((msg, i) => (
-                <div
-                  key={i}
-                  className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                >
-                  {msg.role === 'assistant' && (
-                    <div className="w-7 h-7 rounded-lg bg-indigo-600/30 border border-indigo-500/30 flex items-center justify-center text-indigo-300 shrink-0">
-                      <Bot size={14} />
-                    </div>
-                  )}
-                  <div
-                    className={`p-3.5 rounded-2xl max-w-[80%] leading-relaxed ${
-                      msg.role === 'user'
-                        ? 'bg-indigo-600 text-white rounded-br-none'
-                        : 'bg-white/5 border border-white/10 text-gray-200 rounded-bl-none'
-                    }`}
-                  >
-                    {msg.content}
-                  </div>
-                  {msg.role === 'user' && (
-                    <div className="w-7 h-7 rounded-lg bg-sky-600/30 border border-sky-500/30 flex items-center justify-center text-sky-300 shrink-0">
-                      <User size={14} />
-                    </div>
-                  )}
+            {/* Typing Indicator */}
+            {isLoading && (
+              <div className="flex gap-2.5 justify-start">
+                <div className="w-7 h-7 rounded-full bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-300 text-xs flex-shrink-0">
+                  🤖
                 </div>
-              ))}
-              {loading && (
-                <div className="flex items-center gap-2 text-xs text-gray-400 italic">
-                  <Sparkles size={14} className="animate-spin text-indigo-400" /> Inclusy is thinking...
+                <div className="bg-slate-800/90 border border-slate-700/60 rounded-2xl rounded-bl-none px-4 py-3 text-slate-400 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce"></span>
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:0.2s]"></span>
+                  <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-bounce [animation-delay:0.4s]"></span>
                 </div>
-              )}
-              <div ref={chatEndRef} />
-            </div>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
 
-            {/* Input Bar */}
-            <form onSubmit={handleSend} className="p-3 border-t border-white/10 bg-black/30 flex gap-2">
+          {/* Input Area */}
+          <div className="p-3 bg-slate-800/80 border-t border-slate-700/60">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSend();
+              }}
+              className="flex items-center gap-2"
+            >
               <input
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about financial plans, speaking, or U.N.I.T.E..."
-                className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-indigo-500 transition placeholder:text-gray-500"
+                placeholder="Ask about financial advisory, keynotes..."
+                className="flex-1 bg-slate-900/90 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
+                disabled={isLoading}
               />
               <button
                 type="submit"
-                disabled={loading}
-                className="p-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-xl transition flex items-center justify-center"
+                disabled={isLoading || !input.trim()}
+                className="bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
+                aria-label="Send message"
               >
-                <Send size={16} />
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
               </button>
             </form>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          </div>
+
+        </div>
+      )}
     </div>
   );
 }
-
