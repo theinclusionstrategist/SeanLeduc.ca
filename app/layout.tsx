@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
 import './globals.css';
+import InclusyWidget from '@/components/InclusyWidget';
 
 const inter = Inter({ subsets: ['latin'] });
 
@@ -143,8 +144,12 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body className={`${inter.className} bg-slate-950 text-slate-100 antialiased`}>
-        {children}
+      <body className={`${inter.className} bg-slate-950 text-slate-100 antialiased min-h-screen flex flex-col`}>
+        {/* Main Content Area */}
+        <main className="flex-grow">{children}</main>
+
+        {/* Global Gemini AI Assistant */}
+        <InclusyWidget />
       </body>
     </html>
   );
