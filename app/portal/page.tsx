@@ -1,322 +1,404 @@
 'use client';
 
-import { useState, useEffect, useTransition, useCallback } from 'react';
-import { Contact, TrackType, AgentName } from '@/types/crm';
-import { getContacts, updateContactStage } from '@/app/actions/crm';
+import { useState, useEffect } from 'react';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { useRouter } from 'next/navigation';
+import {
+  Users,
+  Briefcase,
+  Mic,
+  Heart,
+  Search,
+  Filter,
+  Plus,
+  LogOut,
+  Sparkles,
+  ChevronRight,
+  TrendingUp,
+  Mail,
+  Phone,
+  MoreVertical,
+  ShieldAlert,
+  Loader2,
+  RefreshCw
+} from 'lucide-react';
 
-const RECRUIT_STAGES = [
-  'New Lead',
-  'Reach Out / Attempted',
-  'Connected',
-  'Exp Pres: Tuesday @ 9:00pm EST',
-  'Exp Pres: Thursday @ 7:00pm EST',
-  'Exp Pres: Saturday @ 10:00am EST',
-  'Exp Pres: Attended',
-  'Met with Leader',
-  'RECRUITED (Teammate)',
-  'LONG TERM FOLLOW UP',
-];
+interface Lead {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  name?: string;
+  email: string;
+  phone?: string;
+  entity_pillar: 'financial' | 'speaking' | 'charity';
+  sub_track?: string;
+  stage: string;
+  assigned_agent_id?: string;
+  created_at: string;
+}
 
-const CLIENT_STAGES = [
-  'New Lead',
-  'Reach Out / Attempted',
-  'Connected',
-  'Intro Meeting Scheduled (Sean)',
-  'Intro Meeting Scheduled (Jason)',
-  'Intro Meeting Held',
-  'Plan Building',
-  'Carryback / Presentation',
-  'Closing Business',
-  'Closed-Won',
-  'LONG TERM FOLLOW UP',
-];
+export default function PortalDashboard() {
+  const [leads, setLeads] = useState<Lead[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedPillar, setSelectedPillar] = useState<string>('all');
+  const [selectedStage, setSelectedStage] = useState<string>('all');
+  const [userRole, setUserRole] = useState<string>('Agent');
+  const [userName, setUserName] = useState<string>('Team Member');
 
-export default function CRMPortal() {
-  const [track, setTrack] = useState<TrackType>('Recruit');
-  const [agent, setAgent] = useState<AgentName>('ALL');
-  const [search, setSearch] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [page, setPage] = useState(1);
-
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [totalPages, setTotalPages] = useState(0);
-  const [isPending, startTransition] = useTransition();
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-
-  // Debounce search input
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setDebouncedSearch(search);
-      setPage(1);
-    }, 300);
-    return () => clearTimeout(handler);
-  }, [search]);
-
-  const loadData = useCallback(() => {
-    setErrorMessage(null);
-    startTransition(async () => {
-      const res = await getContacts({
-        track,
-        agent,
-        query: debouncedSearch,
-        stageFilter: 'ALL',
-        page,
-        pageSize: 50,
-      });
-
-      if (res.error) {
-        setErrorMessage(res.error);
-      } else {
-        setContacts(res.data);
-        setTotalCount(res.count);
-        setTotalPages(res.totalPages);
-      }
-    });
-  }, [track, agent, debouncedSearch, page]);
+  const supabase = createClientComponentClient();
+  const router = useRouter();
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    fetchUserDataAndLeads();
+  }, []);
 
-  // Optimistic UI Handler for stage transition
-  const handleStageChange = async (contactId: string | number, newStage: string) => {
-    setContacts((prev) =>
-      prev.map((c) => (c.id === contactId ? { ...c, stage: newStage } : c))
-    );
+  const fetchUserDataAndLeads = async () => {
+    setLoading(true);
+    
+    // Get current session
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      router.push('/login');
+      return;
+    }
 
-    const result = await updateContactStage(contactId, newStage);
-    if (!result.success) {
-      setErrorMessage(`Failed to update stage: ${result.error}`);
-      loadData(); // Rollback on failure
+    setUserName(session.user.email?.split('@')[0] || 'Agent');
+
+    // Fetch leads (RLS automatically restricts based on logged-in user)
+    const { data, error } = await supabase
+      .from('leads')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (!error && data) {
+      setLeads(data);
+    }
+
+    setLoading(false);
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
+  // Filtering Logic
+  const filteredLeads = leads.filter((lead) => {
+    const fullName = `${lead.first_name || ''} ${lead.last_name || ''} ${lead.name || ''}`.toLowerCase();
+    const matchesSearch =
+      fullName.includes(searchTerm.toLowerCase()) ||
+      lead.email.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesPillar =
+      selectedPillar === 'all' || lead.entity_pillar === selectedPillar;
+
+    const matchesStage =
+      selectedStage === 'all' || lead.stage?.toLowerCase() === selectedStage.toLowerCase();
+
+    return matchesSearch && matchesPillar && matchesStage;
+  });
+
+  // KPI Calculations
+  const totalLeads = leads.length;
+  const financialCount = leads.filter(l => l.entity_pillar === 'financial').length;
+  const speakingCount = leads.filter(l => l.entity_pillar === 'speaking').length;
+  const charityCount = leads.filter(l => l.entity_pillar === 'charity').length;
+
+  const getPillarBadge = (pillar: string) => {
+    switch (pillar) {
+      case 'financial':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><Briefcase className="w-3 h-3" /> Financial</span>;
+      case 'speaking':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20"><Mic className="w-3 h-3" /> Speaking</span>;
+      case 'charity':
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20"><Heart className="w-3 h-3" /> Charity</span>;
+      default:
+        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/10 text-slate-400 border border-slate-500/20">General</span>;
     }
   };
 
-  const getPriorityBadge = (p?: string) => {
-    switch (p) {
-      case 'SUPER HOT':
-        return 'bg-red-500/20 text-red-400 border-red-500/40 font-black animate-pulse';
-      case 'Hot':
-        return 'bg-orange-500/20 text-orange-400 border-orange-500/40 font-bold';
-      case 'Warm':
-        return 'bg-amber-500/20 text-amber-300 border-amber-500/40 font-semibold';
-      case 'Luke Warm':
-        return 'bg-blue-500/20 text-blue-400 border-blue-500/40';
-      default:
-        return 'bg-slate-800 text-slate-400 border-slate-700';
+  const getStageBadge = (stage: string) => {
+    const s = stage?.toLowerCase() || 'new';
+    if (s.includes('new') || s.includes('lead')) {
+      return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20">New Contact</span>;
+    } else if (s.includes('nurture') || s.includes('sequence')) {
+      return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">In Nurture</span>;
+    } else if (s.includes('closed') || s.includes('won') || s.includes('client')) {
+      return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">Converted</span>;
     }
+    return <span className="px-2.5 py-1 rounded-md text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700">{stage || 'Active'}</span>;
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8 space-y-6">
-      {/* Executive Command Header */}
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 bg-slate-900/90 backdrop-blur border border-slate-800 p-6 rounded-2xl shadow-2xl">
-        <div className="space-y-1">
-          <div className="flex items-center gap-3">
-            <div className="h-3 w-3 rounded-full bg-emerald-500 animate-ping" />
-            <span className="text-xs font-mono tracking-widest text-emerald-400 uppercase">
-              Enterprise CRM Engine v2.5
-            </span>
-          </div>
-          <h1 className="text-3xl font-black tracking-tight text-white">
-            SEAN LEDUC & ASSOCIATES
-          </h1>
-          <p className="text-slate-400 text-sm">
-            High-Velocity Lead Conversion & Multi-Agent Recruiting Pipeline
-          </p>
-        </div>
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500 selection:text-white">
+      {/* TOP NAVIGATION BAR */}
+      <header className="sticky top-0 z-30 bg-slate-900/80 backdrop-blur-md border-b border-slate-800/80">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            
+            {/* Logo & Platform Name */}
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center text-white font-bold shadow-md shadow-blue-500/20">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="font-extrabold tracking-tight text-white text-lg">TIS Portal</span>
+                <span className="hidden sm:inline-block ml-2 text-xs font-medium text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full border border-slate-700">Enterprise CRM</span>
+              </div>
+            </div>
 
-        {/* Track Switcher */}
-        <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-800 shadow-inner">
-          <button
-            onClick={() => {
-              setTrack('Recruit');
-              setPage(1);
-            }}
-            className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-all duration-200 ${
-              track === 'Recruit'
-                ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30 ring-1 ring-blue-400'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            🎯 Recruits Track
-          </button>
-          <button
-            onClick={() => {
-              setTrack('Client');
-              setPage(1);
-            }}
-            className={`px-6 py-2.5 rounded-lg font-bold text-sm transition-all duration-200 ${
-              track === 'Client'
-                ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 ring-1 ring-emerald-400'
-                : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            💼 Clients Track
-          </button>
+            {/* Right Controls / Profile */}
+            <div className="flex items-center gap-4">
+              <div className="hidden md:flex items-center gap-2 text-xs text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span>Logged in as <strong className="text-white capitalize">{userName}</strong></span>
+              </div>
+
+              <button
+                onClick={handleSignOut}
+                className="inline-flex items-center gap-2 text-xs font-medium text-slate-400 hover:text-white bg-slate-900 hover:bg-slate-800 border border-slate-800 hover:border-slate-700 px-3 py-2 rounded-lg transition"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sign Out</span>
+              </button>
+            </div>
+
+          </div>
         </div>
       </header>
 
-      {/* Control Toolbar */}
-      <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-slate-900/60 p-4 rounded-xl border border-slate-800">
-        <div className="relative w-full md:w-96">
-          <input
-            type="text"
-            placeholder="Search contacts, phones, emails..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-4 py-2.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-          />
-          {isPending && (
-            <div className="absolute right-3 top-3 h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          )}
+      {/* MAIN DASHBOARD CONTENT */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+        
+        {/* PAGE HEADER */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">Lead Overview</h1>
+            <p className="text-sm text-slate-400 mt-1">Manage contacts, track stage movement, and monitor automated nurture sequences.</p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <button
+              onClick={fetchUserDataAndLeads}
+              className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-xl transition"
+              title="Refresh Data"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
-        {/* Agent Filter & Count */}
-        <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end">
-          <span className="text-xs text-slate-400 font-mono">
-            TOTAL: <strong className="text-white">{totalCount.toLocaleString()}</strong>
-          </span>
+        {/* METRICS METRIC CARDS GRID */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Total Leads</span>
+              <div className="p-2 bg-blue-500/10 text-blue-400 rounded-xl border border-blue-500/20">
+                <Users className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-white">{totalLeads}</span>
+              <span className="text-xs text-slate-400">active records</span>
+            </div>
+          </div>
 
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-semibold text-slate-400 uppercase">Agent:</span>
-            {(['ALL', 'Sean', 'Shaun'] as AgentName[]).map((ag) => (
+          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Financial (WFG)</span>
+              <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-xl border border-emerald-500/20">
+                <Briefcase className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-white">{financialCount}</span>
+              <span className="text-xs text-slate-400">pipeline leads</span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Speaking</span>
+              <div className="p-2 bg-purple-500/10 text-purple-400 rounded-xl border border-purple-500/20">
+                <Mic className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-white">{speakingCount}</span>
+              <span className="text-xs text-slate-400">engagements</span>
+            </div>
+          </div>
+
+          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl relative overflow-hidden group hover:border-slate-700 transition">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">Charity</span>
+              <div className="p-2 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
+                <Heart className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-4 flex items-baseline gap-2">
+              <span className="text-3xl font-extrabold text-white">{charityCount}</span>
+              <span className="text-xs text-slate-400">donors / partners</span>
+            </div>
+          </div>
+
+        </div>
+
+        {/* TOOLBAR & FILTERS */}
+        <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+          
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            
+            {/* Search Field */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search by name or email..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Stage Dropdown */}
+            <div className="flex items-center gap-2">
+              <Filter className="w-4 h-4 text-slate-400 shrink-0" />
+              <select
+                value={selectedStage}
+                onChange={(e) => setSelectedStage(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-slate-300 text-sm rounded-xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All Stages</option>
+                <option value="new">New Contacts</option>
+                <option value="nurture">In Nurture</option>
+                <option value="closed">Converted</option>
+              </select>
+            </div>
+
+          </div>
+
+          {/* Pillar Tabs */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 border-t border-slate-800/80 pt-3">
+            {[
+              { id: 'all', label: 'All Pillars' },
+              { id: 'financial', label: 'Financial (WFG)' },
+              { id: 'speaking', label: 'Speaking' },
+              { id: 'charity', label: 'Charity' },
+            ].map((tab) => (
               <button
-                key={ag}
-                onClick={() => {
-                  setAgent(ag);
-                  setPage(1);
-                }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${
-                  agent === ag
-                    ? 'bg-slate-700 text-white border-slate-500 shadow'
-                    : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
+                key={tab.id}
+                onClick={() => setSelectedPillar(tab.id)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-medium transition whitespace-nowrap ${
+                  selectedPillar === tab.id
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                    : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800/60'
                 }`}
               >
-                {ag}
+                {tab.label}
               </button>
             ))}
           </div>
-        </div>
-      </div>
 
-      {/* Error Alert */}
-      {errorMessage && (
-        <div className="bg-red-950/80 border border-red-500/50 rounded-xl p-4 text-red-300 text-sm font-medium">
-          ⚠️ {errorMessage}
-        </div>
-      )}
-
-      {/* Data Table */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-950/80 text-slate-400 uppercase text-[11px] font-mono tracking-wider border-b border-slate-800">
-              <tr>
-                <th className="p-4">Contact</th>
-                <th className="p-4">Priority</th>
-                <th className="p-4">Market / Source</th>
-                <th className="p-4">Agent</th>
-                <th className="p-4">Pipeline Stage</th>
-                <th className="p-4">Next Best Action</th>
-                <th className="p-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60 font-sans">
-              {contacts.length === 0 && !isPending ? (
-                <tr>
-                  <td colSpan={7} className="p-12 text-center text-slate-500 font-mono">
-                    No contacts found matching current filter context.
-                  </td>
-                </tr>
-              ) : (
-                contacts.map((c) => {
-                  const documentUrl = c.link || c.Link || c.Doc;
-                  const nextAction = c.nba || c.NBA;
-
-                  return (
-                    <tr key={c.id} className="hover:bg-slate-800/40 transition-colors">
-                      <td className="p-4">
-                        <div className="font-bold text-white text-base">{c.name || 'Unnamed Lead'}</div>
-                        <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5 font-mono">
-                          <span>{c.phone || 'No Phone'}</span>
-                          {c.email && <span className="text-slate-500">• {c.email}</span>}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-md text-[10px] border uppercase tracking-wider ${getPriorityBadge(c.priority)}`}>
-                          {c.priority || 'Warm'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-slate-300 text-xs font-medium">
-                        {c.market || 'Cold Market'}
-                      </td>
-                      <td className="p-4">
-                        <span className="font-semibold text-blue-400 text-xs bg-blue-950/60 border border-blue-800/50 px-2.5 py-1 rounded-md">
-                          {c.agent || 'Sean'}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <select
-                          value={c.stage}
-                          onChange={(e) => handleStageChange(c.id, e.target.value)}
-                          className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                        >
-                          {(track === 'Recruit' ? RECRUIT_STAGES : CLIENT_STAGES).map((stg) => (
-                            <option key={stg} value={stg}>
-                              {stg}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="p-4 text-xs font-semibold text-emerald-400 font-mono">
-                        {nextAction || '—'}
-                      </td>
-                      <td className="p-4 text-right">
-                        {documentUrl ? (
-                          <a
-                            href={documentUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3.5 py-1.5 rounded-lg text-xs font-semibold border border-slate-700 transition-all inline-flex items-center gap-1.5"
-                          >
-                            📖 <span>Doc</span>
-                          </a>
-                        ) : (
-                          <span className="text-slate-600 text-xs">—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
         </div>
 
-        {/* Enterprise Pagination Controls */}
-        <div className="flex items-center justify-between p-4 bg-slate-950 border-t border-slate-800 text-xs text-slate-400">
-          <div>
-            Page <strong className="text-white">{page}</strong> of <strong className="text-white">{totalPages || 1}</strong>
-          </div>
-          <div className="flex gap-2">
-            <button
-              disabled={page <= 1 || isPending}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="px-4 py-2 rounded-lg bg-slate-800 text-slate-200 font-semibold border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
-            >
-              ← Previous
-            </button>
-            <button
-              disabled={page >= totalPages || isPending}
-              onClick={() => setPage((p) => p + 1)}
-              className="px-4 py-2 rounded-lg bg-slate-800 text-slate-200 font-semibold border border-slate-700 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-slate-700 transition"
-            >
-              Next →
-            </button>
-          </div>
+        {/* DATA TABLE CONTAINER */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+          {loading ? (
+            <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
+              <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+              <p className="text-sm text-slate-400">Loading protected contacts...</p>
+            </div>
+          ) : filteredLeads.length === 0 ? (
+            <div className="py-16 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-slate-800 text-slate-500 inline-flex items-center justify-center">
+                <Users className="w-6 h-6" />
+              </div>
+              <p className="text-slate-300 font-medium">No contacts match your query.</p>
+              <p className="text-xs text-slate-500 max-w-sm mx-auto">Try resetting your search filter or checking a different pillar tab.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950/50 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                    <th className="py-3.5 px-6">Contact Details</th>
+                    <th className="py-3.5 px-6">Pillar</th>
+                    <th className="py-3.5 px-6">Sub-Track</th>
+                    <th className="py-3.5 px-6">Stage Status</th>
+                    <th className="py-3.5 px-6">Added Date</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-sm">
+                  {filteredLeads.map((lead) => {
+                    const displayName =
+                      `${lead.first_name || ''} ${lead.last_name || ''}`.trim() ||
+                      lead.name ||
+                      'Unnamed Contact';
+
+                    return (
+                      <tr key={lead.id} className="hover:bg-slate-800/40 transition group">
+                        
+                        {/* Name & Email */}
+                        <td className="py-4 px-6">
+                          <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center text-slate-300 font-bold text-xs uppercase shrink-0">
+                              {displayName.charAt(0)}
+                            </div>
+                            <div>
+                              <div className="font-semibold text-white group-hover:text-blue-400 transition">
+                                {displayName}
+                              </div>
+                              <div className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                                <Mail className="w-3 h-3 text-slate-500" />
+                                <span>{lead.email}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Pillar Badge */}
+                        <td className="py-4 px-6">
+                          {getPillarBadge(lead.entity_pillar)}
+                        </td>
+
+                        {/* Sub Track */}
+                        <td className="py-4 px-6 text-slate-300 text-xs">
+                          {lead.sub_track ? (
+                            <span className="capitalize bg-slate-950 border border-slate-800 px-2.5 py-1 rounded-lg">
+                              {lead.sub_track}
+                            </span>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
+
+                        {/* Stage Badge */}
+                        <td className="py-4 px-6">
+                          {getStageBadge(lead.stage)}
+                        </td>
+
+                        {/* Date */}
+                        <td className="py-4 px-6 text-xs text-slate-400">
+                          {new Date(lead.created_at).toLocaleDateString(undefined, {
+                            month: 'short',
+                            day: 'numeric',
+                            year: 'numeric',
+                          })}
+                        </td>
+
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
-      </div>
+
+      </main>
     </div>
   );
 }
