@@ -32,22 +32,18 @@ export async function getContacts(
 
     let dbQuery = supabase.from('contacts').select('*', { count: 'exact' });
 
-    // 1. Entity Pillar Firewall (WFG Financial vs Motivational Speaking vs UNITE Charity)
     if (entityPillar && entityPillar !== 'ALL') {
       dbQuery = dbQuery.eq('entity_pillar', entityPillar);
     }
 
-    // 2. WFG Sub-Track Breakdown (Recruit vs Business Services vs Personal Advisory)
     if (subTrack && subTrack !== 'ALL') {
       dbQuery = dbQuery.eq('sub_track', subTrack);
     }
 
-    // 3. Track Legacy Fallback
     if (track && track !== 'ALL') {
       dbQuery = dbQuery.eq('type', track);
     }
 
-    // 4. Agent Isolation Scope
     if (agent && agent !== 'ALL') {
       dbQuery = dbQuery.eq('agent', agent);
     }
@@ -88,37 +84,44 @@ export async function updateContactStage(
   newStage: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
+    const isNumericId = typeof contactId === 'number' || (!isNaN(Number(contactId)) && !isNaN(parseFloat(String(contactId))));
     const nowIso = new Date().toISOString();
 
-    // Fix: Build filter BEFORE calling .maybeSingle()
-    let selectQuery = supabase.from('contacts').select('name, stage, agent');
-    if (isNumericId) {
-      selectQuery = selectQuery.eq('id', Number(contactId));
-    } else {
-      selectQuery = selectQuery.eq('ID', String(contactId));
-    }
+    // Direct inline execution completely avoids Supabase Builder re-assignment typing bugs
+    const { data: currentContact } = isNumericId
+      ? await supabase
+          .from('contacts')
+          .select('name, stage, agent')
+          .eq('id', Number(contactId))
+          .maybeSingle()
+      : await supabase
+          .from('contacts')
+          .select('name, stage, agent')
+          .eq('ID', String(contactId))
+          .maybeSingle();
 
-    const { data: currentContact } = await selectQuery.maybeSingle();
+    const updateRes = isNumericId
+      ? await supabase
+          .from('contacts')
+          .update({
+            stage: newStage,
+            last_contacted: nowIso,
+            'last contact': nowIso,
+            Updated: nowIso,
+          })
+          .eq('id', Number(contactId))
+      : await supabase
+          .from('contacts')
+          .update({
+            stage: newStage,
+            last_contacted: nowIso,
+            'last contact': nowIso,
+            Updated: nowIso,
+          })
+          .eq('ID', String(contactId));
 
-    // Perform Update
-    let updateQuery = supabase.from('contacts').update({
-      stage: newStage,
-      last_contacted: nowIso,
-      'last contact': nowIso,
-      Updated: nowIso,
-    });
+    if (updateRes.error) throw new Error(updateRes.error.message);
 
-    if (isNumericId) {
-      updateQuery = updateQuery.eq('id', Number(contactId));
-    } else {
-      updateQuery = updateQuery.eq('ID', String(contactId));
-    }
-
-    const { error } = await updateQuery;
-    if (error) throw new Error(error.message);
-
-    // Alert assigned agent on stage movement
     if (currentContact && currentContact.stage !== newStage) {
       await dispatchLeadMovementAlert({
         contactName: currentContact.name || 'Lead',
@@ -141,23 +144,28 @@ export async function toggleNurtureSequence(
   active: boolean
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
+    const isNumericId = typeof contactId === 'number' || (!isNaN(Number(contactId)) && !isNaN(parseFloat(String(contactId))));
     const nextDate = active ? new Date().toISOString() : null;
 
-    let updateQuery = supabase.from('contacts').update({
-      nurture_active: active,
-      next_nurture_date: nextDate,
-      Updated: new Date().toISOString(),
-    });
+    const updateRes = isNumericId
+      ? await supabase
+          .from('contacts')
+          .update({
+            nurture_active: active,
+            next_nurture_date: nextDate,
+            Updated: new Date().toISOString(),
+          })
+          .eq('id', Number(contactId))
+      : await supabase
+          .from('contacts')
+          .update({
+            nurture_active: active,
+            next_nurture_date: nextDate,
+            Updated: new Date().toISOString(),
+          })
+          .eq('ID', String(contactId));
 
-    if (isNumericId) {
-      updateQuery = updateQuery.eq('id', Number(contactId));
-    } else {
-      updateQuery = updateQuery.eq('ID', String(contactId));
-    }
-
-    const { error } = await updateQuery;
-    if (error) throw new Error(error.message);
+    if (updateRes.error) throw new Error(updateRes.error.message);
 
     revalidatePath('/portal');
     return { success: true };
