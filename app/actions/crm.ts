@@ -16,7 +16,7 @@ export async function getContacts(
   filters: CRMFilterState
 ): Promise<PaginatedResponse<Contact>> {
   try {
-    const { track, agent, query, stageFilter, page = 1, pageSize = 50 } = filters;
+    const { track, agent, query, stageFilter, page = 1, pageSize = 100 } = filters;
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
@@ -69,9 +69,7 @@ export async function updateContactStage(
     const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
     const nowIso = new Date().toISOString();
 
-    // 1. Build fetch query and apply filters BEFORE calling .maybeSingle()
     let fetchQuery = supabase.from('contacts').select('name, stage, agent');
-
     if (isNumericId) {
       fetchQuery = fetchQuery.eq('id', Number(contactId));
     } else {
@@ -80,9 +78,9 @@ export async function updateContactStage(
 
     const { data: currentContact } = await fetchQuery.maybeSingle();
 
-    // 2. Perform Update
     let updateQuery = supabase.from('contacts').update({
       stage: newStage,
+      last_contacted: nowIso,
       'last contact': nowIso,
       Updated: nowIso,
     });
@@ -96,7 +94,6 @@ export async function updateContactStage(
     const { error } = await updateQuery;
     if (error) throw new Error(error.message);
 
-    // 3. Notify ONLY the assigned agent (Sean or Shaun) of lead movement
     if (currentContact && currentContact.stage !== newStage) {
       await dispatchLeadMovementAlert({
         contactName: currentContact.name || 'Lead',
@@ -110,6 +107,37 @@ export async function updateContactStage(
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Stage update failed';
+    return { success: false, error: msg };
+  }
+}
+
+export async function toggleNurtureSequence(
+  contactId: string | number,
+  active: boolean
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
+    const nextDate = active ? new Date().toISOString() : null;
+
+    let updateQuery = supabase.from('contacts').update({
+      nurture_active: active,
+      next_nurture_date: nextDate,
+      Updated: new Date().toISOString(),
+    });
+
+    if (isNumericId) {
+      updateQuery = updateQuery.eq('id', Number(contactId));
+    } else {
+      updateQuery = updateQuery.eq('ID', String(contactId));
+    }
+
+    const { error } = await updateQuery;
+    if (error) throw new Error(error.message);
+
+    revalidatePath('/portal');
+    return { success: true };
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Nurture toggle failed';
     return { success: false, error: msg };
   }
 }
