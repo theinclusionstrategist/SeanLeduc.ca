@@ -1,72 +1,55 @@
-import type { Metadata, Viewport } from 'next';
-import { Inter } from 'next/font/google';
+import type { Metadata } from 'next';
 import './globals.css';
 import InclusyWidget from '@/components/InclusyWidget';
 
-const inter = Inter({ subsets: ['latin'] });
-
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://seanleduc.ca';
-
-export const viewport: Viewport = {
-  themeColor: '#020617',
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-};
+const SITE_URL = 'https://www.seanleduc.ca';
 
 export const metadata: Metadata = {
-  metadataBase: new URL(siteUrl),
+  metadataBase: new URL(SITE_URL),
   title: {
-    default: 'Sean Leduc | The Inclusion Strategist & Keynote Speaker',
+    default: 'Sean Leduc | The Inclusion Strategist | Financial Advisor & Keynote Speaker',
     template: '%s | Sean Leduc',
   },
   description:
-    'Ontario financial strategy & corporate advisory (IPPs, Life & Disability Insurance, Wealth Management), motivational keynote speaking, and U.N.I.T.E. Charity initiatives based in Carleton Place, ON.',
+    'Empowering individuals and corporations across Ontario with financial & insurance strategies, motivational keynote speaking on resilience, and inclusive community impact through U.N.I.T.E.',
   keywords: [
-    'Sean Leduc',
-    'The Inclusion Strategist',
     'Financial Advisor Carleton Place',
-    'Lanark County Financial Strategy',
-    'Individual Pension Plan Ontario',
-    'IPP Corporate Tax Retirement Canada',
-    'Keynote Speaker Ontario',
-    'Motivational Speaker Ottawa',
+    'Insurance Specialist Ottawa',
+    'RDSP Specialist Ontario',
+    'Keynote Motivational Speaker',
+    'Life Insurance Strategy Ontario',
+    'Corporate Group Benefits Ottawa',
+    'Key Person Insurance Carleton Place',
     'U.N.I.T.E. Charity',
-    'The Power of Perspective',
-    'Corporate Insurance Advisory',
-    'RDSP & Disability Tax Credit Advisory',
+    'The Inclusion Strategist',
+    'Sean Leduc',
   ],
-  authors: [{ name: 'Sean Leduc', url: siteUrl }],
+  authors: [{ name: 'Sean Leduc', url: SITE_URL }],
   creator: 'Sean Leduc',
-  publisher: 'Sean Leduc',
+  publisher: 'Sean Leduc & Associates',
   formatDetection: {
-    email: false,
-    address: false,
-    telephone: false,
+    email: true,
+    address: true,
+    telephone: true,
+  },
+  alternates: {
+    canonical: SITE_URL,
   },
   openGraph: {
-    type: 'website',
-    locale: 'en_CA',
-    url: siteUrl,
-    title: 'Sean Leduc | The Inclusion Strategist & Keynote Speaker',
+    title: 'Sean Leduc | The Power of Perspective',
     description:
-      'Empowering individuals and business owners across Ontario through corporate financial strategy, motivational speaking, and community outreach.',
+      'High-velocity financial strategy, corporate insurance, and motivational keynote speaking in Carleton Place & Ontario.',
+    url: SITE_URL,
     siteName: 'Sean Leduc - The Inclusion Strategist',
-    images: [
-      {
-        url: `${siteUrl}/og`,
-        width: 1200,
-        height: 630,
-        alt: 'Sean Leduc - The Inclusion Strategist',
-      },
-    ],
+    locale: 'en_CA',
+    type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Sean Leduc | The Inclusion Strategist & Keynote Speaker',
+    title: 'Sean Leduc | Financial Strategy & Keynote Speaker',
     description:
-      'Financial Strategy, Motivational Keynote Speaking, and U.N.I.T.E. Charity in Ontario.',
-    images: [`${siteUrl}/og`],
+      'Ontario-wide financial advisory, RDSP planning, and motivational keynotes.',
+    creator: '@seanleduc',
   },
   robots: {
     index: true,
@@ -79,9 +62,6 @@ export const metadata: Metadata = {
       'max-snippet': -1,
     },
   },
-  alternates: {
-    canonical: siteUrl,
-  },
 };
 
 export default function RootLayout({
@@ -89,66 +69,54 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Schema.org JSON-LD Structured Data for Local Business & Person Entity
-  const jsonLd = {
+  // Rich Structured Data for Google Local Business & Financial Service
+  const jsonLdSchema = {
     '@context': 'https://schema.org',
-    '@graph': [
-      {
-        '@type': 'Person',
-        '@id': `${siteUrl}/#person`,
-        name: 'Sean Leduc',
-        jobTitle: 'Financial Strategist & Keynote Speaker',
-        knowsAbout: [
-          'Financial Strategy',
-          'Individual Pension Plans (IPP)',
-          'Corporate Insurance & Buy-Sell Funding',
-          'Motivational Speaking',
-          'Inclusion & Accessibility Advocacy',
-        ],
-        url: siteUrl,
-      },
-      {
-        '@type': 'FinancialService',
-        '@id': `${siteUrl}/#organization`,
-        name: 'Sean Leduc - The Inclusion Strategist',
-        url: siteUrl,
-        logo: `${siteUrl}/logo.png`,
-        image: `${siteUrl}/og`,
-        address: {
-          '@type': 'PostalAddress',
-          addressLocality: 'Carleton Place',
-          addressRegion: 'ON',
-          addressCountry: 'CA',
-        },
-        geo: {
-          '@type': 'GeoCoordinates',
-          latitude: 45.1406,
-          longitude: -76.1419,
-        },
-        areaServed: [
-          'Carleton Place',
-          'Lanark County',
-          'Ottawa',
-          'Ontario',
-        ],
-        priceRange: '$$$',
-      },
+    '@type': 'FinancialService',
+    name: 'Sean Leduc - The Inclusion Strategist',
+    image: `${SITE_URL}/og-image.jpg`,
+    '@id': SITE_URL,
+    url: SITE_URL,
+    telephone: '+1-613-555-0199', // Update with direct business phone
+    priceRange: '$$',
+    address: {
+      '@type': 'PostalAddress',
+      streetAddress: 'Carleton Place',
+      addressLocality: 'Carleton Place',
+      addressRegion: 'ON',
+      postalCode: 'K7C 3P1',
+      addressCountry: 'CA',
+    },
+    geo: {
+      '@type': 'GeoCoordinates',
+      latitude: 45.141,
+      longitude: -76.145,
+    },
+    openingHoursSpecification: {
+      '@type': 'OpeningHoursSpecification',
+      dayOfWeek: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
+      opens: '08:30',
+      closes: '17:00',
+    },
+    sameAs: [
+      'https://www.linkedin.com/in/seanleduc',
+      'https://www.facebook.com/seanleduc',
     ],
+    areaServed: ['Carleton Place', 'Lanark County', 'Ottawa', 'Ontario'],
+    description:
+      'Financial Strategy, Life & Disability Insurance, Keyperson Solutions, RDSP Planning, and Keynote Speaking across Ontario.',
   };
 
   return (
-    <html lang="en-CA" className="scroll-smooth">
+    <html lang="en" className="scroll-smooth">
       <head>
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLdSchema) }}
         />
       </head>
-      <body className={`${inter.className} bg-slate-950 text-slate-100 antialiased min-h-screen flex flex-col`}>
-        {/* Main Content Area */}
-        <main className="flex-grow">{children}</main>
-
-        {/* Global Gemini AI Assistant */}
+      <body className="bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
+        {children}
         <InclusyWidget />
       </body>
     </html>
