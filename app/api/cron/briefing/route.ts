@@ -1,39 +1,65 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { Resend } from 'resend';
+import { createClient } from '@supabase/supabase-js';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Prevent Next.js from prerendering or evaluating this route statically during build time
+export const dynamic = 'force-dynamic';
 
-export async function GET() {
+export async function GET(request: Request) {
+  // Check authorization header if CRON_SECRET is configured
+  const authHeader = request.headers.get('authorization');
+  if (
+    process.env.CRON_SECRET &&
+    authHeader !== `Bearer ${process.env.CRON_SECRET}`
+  ) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: 'RESEND_API_KEY environment variable is not set.' },
+      { status: 500 }
+    );
+  }
+
   try {
-    // 1. Fetch Hot Leads & Due Tasks
-    const { data: hotLeads } = await supabase
+    const resend = new Resend(apiKey);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch quick summary count for daily briefing
+    const { count: totalContacts } = await supabase
       .from('contacts')
-      .select('name, agent, priority, NBA')
-      .in('priority', ['SUPER HOT', 'Hot']);
+      .select('*', { count: 'exact', head: true });
 
-    const hotListHtml = hotLeads?.length
-      ? hotLeads.map((l) => `<li><b>${l.name}</b> (${l.agent}) - ${l.priority} | NBA: ${l.NBA || 'Call Now'}</li>`).join('')
-      : '<li>No hot leads currently.</li>';
-
-    // 2. Dispatch Daily Briefing Email to Leadership
+    // Send daily executive briefing email
     await resend.emails.send({
-      from: 'TIS CRM Engine <crm@seanleduc.ca>',
-      to: ['TheInclusionStrategist@seanLeduc.ca', 'ShaunBisson1@gmail.com'],
-      subject: `⚡ TIS CRM Morning Briefing - ${new Date().toLocaleDateString()}`,
+      from: 'Sean Leduc <sean@seanleduc.ca>',
+      to: ['sean@seanleduc.ca'],
+      subject: `Executive Daily Briefing - ${new Date().toLocaleDateString()}`,
       html: `
-        <h2>⚡ Daily CRM Morning Briefing</h2>
-        <h3>🔥 High Priority Leads (${hotLeads?.length || 0}):</h3>
-        <ul>${hotListHtml}</ul>
+        <div style="font-family: sans-serif; padding: 20px; color: #1e293b;">
+          <h2>Daily Platform Overview</h2>
+          <p>Here is your daily platform summary for <strong>${new Date().toLocaleDateString()}</strong>:</p>
+          <ul>
+            <li><strong>Total Active Contacts in CRM:</strong> ${totalContacts ?? 0}</li>
+          </ul>
+          <p><a href="https://agentportal.seanleduc.ca" style="color: #2563eb;">Open Agent Portal</a></p>
+        </div>
       `,
     });
 
-    return NextResponse.json({ success: true, dispatched: true });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({
+      success: true,
+      message: 'Briefing sent successfully.',
+    });
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ success: false, error: errorMsg }, { status: 500 });
   }
 }
