@@ -19,26 +19,20 @@ export async function getContacts(
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
-    let dbQuery = supabase
-      .from('contacts')
-      .select('*', { count: 'exact' });
+    let dbQuery = supabase.from('contacts').select('*', { count: 'exact' });
 
-    // Filter by Track / Type (e.g. 'Recruit' or 'Client') if specified
     if (track && track !== 'ALL') {
       dbQuery = dbQuery.eq('type', track);
     }
 
-    // Filter by Agent
     if (agent && agent !== 'ALL') {
       dbQuery = dbQuery.eq('agent', agent);
     }
 
-    // Filter by Pipeline Stage
     if (stageFilter && stageFilter !== 'ALL') {
       dbQuery = dbQuery.eq('stage', stageFilter);
     }
 
-    // Search Query (Name, Email, Phone, or ID string)
     if (query && query.trim() !== '') {
       const sanitized = query.trim();
       dbQuery = dbQuery.or(
@@ -46,7 +40,6 @@ export async function getContacts(
       );
     }
 
-    // Execute query ordered by primary key ID descending (newest first)
     const { data, count, error } = await dbQuery
       .order('id', { ascending: false })
       .range(from, to);
@@ -75,7 +68,6 @@ export async function updateContactStage(
     const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
     const nowIso = new Date().toISOString();
 
-    // Match either numeric 'id' or text string 'ID' (e.g., C-ee29e384)
     let updateQuery = supabase.from('contacts').update({
       stage: newStage,
       'last contact': nowIso,
@@ -93,8 +85,6 @@ export async function updateContactStage(
     if (error) throw new Error(error.message);
 
     revalidatePath('/portal');
-    revalidatePath('/dashboard/kanban');
-    
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Stage update failed';
