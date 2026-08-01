@@ -16,16 +16,38 @@ export async function getContacts(
   filters: CRMFilterState
 ): Promise<PaginatedResponse<Contact>> {
   try {
-    const { track, agent, query, stageFilter, page = 1, pageSize = 100 } = filters;
+    const {
+      track,
+      agent,
+      entityPillar = 'ALL',
+      subTrack = 'ALL',
+      query,
+      stageFilter,
+      page = 1,
+      pageSize = 100,
+    } = filters;
+
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 
     let dbQuery = supabase.from('contacts').select('*', { count: 'exact' });
 
+    // 1. Entity Pillar Firewall (WFG Financial vs Speaking vs UNITE)
+    if (entityPillar && entityPillar !== 'ALL') {
+      dbQuery = dbQuery.eq('entity_pillar', entityPillar);
+    }
+
+    // 2. WFG Sub-Track Breakdown (Recruit vs Business Services vs Personal)
+    if (subTrack && subTrack !== 'ALL') {
+      dbQuery = dbQuery.eq('sub_track', subTrack);
+    }
+
+    // 3. Track Legacy Fallback
     if (track && track !== 'ALL') {
       dbQuery = dbQuery.eq('type', track);
     }
 
+    // 4. Agent Isolation Scope
     if (agent && agent !== 'ALL') {
       dbQuery = dbQuery.eq('agent', agent);
     }
