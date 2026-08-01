@@ -32,12 +32,12 @@ export async function getContacts(
 
     let dbQuery = supabase.from('contacts').select('*', { count: 'exact' });
 
-    // 1. Entity Pillar Firewall (WFG Financial vs Speaking vs UNITE)
+    // 1. Entity Pillar Firewall (WFG Financial vs Motivational Speaking vs UNITE Charity)
     if (entityPillar && entityPillar !== 'ALL') {
       dbQuery = dbQuery.eq('entity_pillar', entityPillar);
     }
 
-    // 2. WFG Sub-Track Breakdown (Recruit vs Business Services vs Personal)
+    // 2. WFG Sub-Track Breakdown (Recruit vs Business Services vs Personal Advisory)
     if (subTrack && subTrack !== 'ALL') {
       dbQuery = dbQuery.eq('sub_track', subTrack);
     }
@@ -91,15 +91,17 @@ export async function updateContactStage(
     const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
     const nowIso = new Date().toISOString();
 
-    let fetchQuery = supabase.from('contacts').select('name, stage, agent');
+    // Fix: Build filter BEFORE calling .maybeSingle()
+    let selectQuery = supabase.from('contacts').select('name, stage, agent');
     if (isNumericId) {
-      fetchQuery = fetchQuery.eq('id', Number(contactId));
+      selectQuery = selectQuery.eq('id', Number(contactId));
     } else {
-      fetchQuery = fetchQuery.eq('ID', String(contactId));
+      selectQuery = selectQuery.eq('ID', String(contactId));
     }
 
-    const { data: currentContact } = await fetchQuery.maybeSingle();
+    const { data: currentContact } = await selectQuery.maybeSingle();
 
+    // Perform Update
     let updateQuery = supabase.from('contacts').update({
       stage: newStage,
       last_contacted: nowIso,
@@ -116,6 +118,7 @@ export async function updateContactStage(
     const { error } = await updateQuery;
     if (error) throw new Error(error.message);
 
+    // Alert assigned agent on stage movement
     if (currentContact && currentContact.stage !== newStage) {
       await dispatchLeadMovementAlert({
         contactName: currentContact.name || 'Lead',
