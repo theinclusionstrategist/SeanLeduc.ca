@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// ============================================================================
-// Types & Interfaces
-// ============================================================================
 export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
@@ -19,14 +16,10 @@ export interface InclusyRequestBody {
   };
 }
 
-// ============================================================================
-// Service Initialization
-// ============================================================================
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Fail-fast environment check for critical infrastructure
 if (!process.env.GEMINI_API_KEY) {
   console.error('[CRITICAL] Missing GEMINI_API_KEY environment variable.');
 }
@@ -36,9 +29,6 @@ const supabase =
     ? createClient(supabaseUrl, supabaseServiceKey)
     : null;
 
-// ============================================================================
-// Inclusy Brand Engine & System Prompt
-// ============================================================================
 const INCLUSY_SYSTEM_INSTRUCTION = `
 You are Inclusy (pronounced "inclus-eee"), the elite AI Concierge for Sean Leduc—The Inclusion Strategist based in Carleton Place, Ontario.
 
@@ -56,14 +46,10 @@ You are Inclusy (pronounced "inclus-eee"), the elite AI Concierge for Sean Leduc
 - Region Focus: Carleton Place, Lanark County, Ottawa, and province-wide Ontario.
 `;
 
-// ============================================================================
-// Handler Engine
-// ============================================================================
 export async function POST(req: NextRequest) {
   const startTime = Date.now();
 
   try {
-    // 1. Payload Validation
     const body: InclusyRequestBody = await req.json();
     const { messages, sessionId, leadContext } = body;
 
@@ -83,7 +69,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Format Messages for Gemini API (Filter out any system messages from contents)
     const formattedContents = messages
       .filter((msg) => msg.role !== 'system')
       .map((msg) => ({
@@ -96,7 +81,6 @@ export async function POST(req: NextRequest) {
       throw new Error('Gemini API key is not configured on the server.');
     }
 
-    // 3. Dispatch to Gemini 1.5 Flash API
     const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const geminiResponse = await fetch(geminiEndpoint, {
@@ -132,12 +116,9 @@ export async function POST(req: NextRequest) {
 
     const latencyMs = Date.now() - startTime;
 
-    // 4. Asynchronous Enterprise Logging (Supabase)
     if (supabase) {
-      // Fire-and-forget logging so user latency isn't delayed
       (async () => {
         try {
-          // Log interaction
           await supabase.from('ai_interactions').insert({
             session_id: sessionId || 'anonymous',
             user_prompt: latestUserMessage,
@@ -146,7 +127,6 @@ export async function POST(req: NextRequest) {
             created_at: new Date().toISOString(),
           });
 
-          // Intent Recognition / Lead Auto-Detection
           const intentTags = detectIntents(latestUserMessage);
           if (intentTags.length > 0 || leadContext?.email) {
             await supabase.from('leads').upsert(
@@ -167,7 +147,6 @@ export async function POST(req: NextRequest) {
       })();
     }
 
-    // 5. Return Structured Success Response
     return NextResponse.json({
       reply: assistantReply,
       sessionId: sessionId || 'anon-' + Date.now(),
@@ -189,9 +168,6 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// ============================================================================
-// Helper: Automated Business Intent Detection
-// ============================================================================
 function detectIntents(message: string): string[] {
   const tags: string[] = [];
   const lower = message.toLowerCase();
@@ -235,9 +211,6 @@ function detectIntents(message: string): string[] {
   ) {
     tags.push('UNITE Charity');
   }
-
-  return tags;
-}
 
   return tags;
 }
