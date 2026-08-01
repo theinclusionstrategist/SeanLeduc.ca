@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Contact } from '@/types/crm';
+import { Contact, EntityPillar, WfgSubTrack } from '@/types/crm';
 import { updateContactStage, toggleNurtureSequence } from '@/app/actions/crm';
 
 const ALL_STAGES = [
@@ -18,30 +18,51 @@ const ALL_STAGES = [
 
 interface MasterContactTableProps {
   initialContacts: Contact[];
+  currentAgent?: 'ALL' | 'Sean' | 'Shaun';
 }
 
-export default function MasterContactTable({ initialContacts }: MasterContactTableProps) {
+export default function MasterContactTable({
+  initialContacts,
+  currentAgent = 'ALL',
+}: MasterContactTableProps) {
   const [contacts, setContacts] = useState<Contact[]>(initialContacts || []);
   const [searchQuery, setSearchQuery] = useState('');
-  const [trackFilter, setTrackFilter] = useState<'ALL' | 'Recruit' | 'Client'>('ALL');
+  const [activePillar, setActivePillar] = useState<EntityPillar | 'ALL'>('WFG Financial');
+  const [activeSubTrack, setActiveSubTrack] = useState<WfgSubTrack | 'ALL'>('ALL');
   const [updatingId, setUpdatingId] = useState<string | number | null>(null);
 
-  // Filter contacts dynamically
+  // Strict Filter Engine
   const filteredContacts = contacts.filter((c) => {
+    // 1. Agent Scope Guard (Shaun only sees his assigned leads)
+    if (currentAgent === 'Shaun' && c.agent !== 'Shaun') return false;
+
+    // 2. Entity Pillar Firewall (WFG vs Speaking vs UNITE)
+    if (activePillar !== 'ALL') {
+      const pillarMatch = c.entity_pillar ? c.entity_pillar === activePillar : activePillar === 'WFG Financial';
+      if (!pillarMatch) return false;
+    }
+
+    // 3. WFG Sub-Track Filter
+    if (activePillar === 'WFG Financial' && activeSubTrack !== 'ALL') {
+      const subMatch = c.sub_track ? c.sub_track === activeSubTrack : (
+        activeSubTrack === 'Recruit' ? c.type === 'Recruit' : true
+      );
+      if (!subMatch) return false;
+    }
+
+    // 4. Search Filter
+    const queryLower = searchQuery.toLowerCase();
     const matchesSearch =
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (c.email && c.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
-      (c.phone && c.phone.includes(searchQuery));
+      c.name.toLowerCase().includes(queryLower) ||
+      (c.email && c.email.toLowerCase().includes(queryLower)) ||
+      (c.phone && c.phone.includes(queryLower));
 
-    const matchesTrack = trackFilter === 'ALL' || c.type === trackFilter;
-
-    return matchesSearch && matchesTrack;
+    return matchesSearch;
   });
 
   const handleStageChange = async (contactId: string | number, newStage: string) => {
     setUpdatingId(contactId);
 
-    // Optimistic UI Update
     setContacts((prev) =>
       prev.map((c) =>
         c.id === contactId
@@ -77,7 +98,7 @@ export default function MasterContactTable({ initialContacts }: MasterContactTab
   };
 
   const formatLastContacted = (isoString?: string) => {
-    if (!isoString) return 'Never / Not Logged';
+    if (!isoString) return 'Not Logged';
     const date = new Date(isoString);
     if (isNaN(date.getTime())) return 'Not Logged';
 
@@ -90,78 +111,108 @@ export default function MasterContactTable({ initialContacts }: MasterContactTab
 
   return (
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl font-sans text-slate-100 space-y-6">
-      {/* Table Header Controls */}
-      <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b border-slate-800 pb-6">
+      {/* Top Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-800 pb-6">
         <div>
-          <h2 className="text-xl font-extrabold text-white">Master Lead & Contact Registry</h2>
+          <h2 className="text-xl font-extrabold text-white">Master Contact Directory</h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Real-time pipeline tracking and automated recruiting drip management.
+            Firewalled lead registry • Role: <span className="text-blue-400 font-bold">{currentAgent === 'Shaun' ? 'Agent (Shaun)' : 'Administrator (Sean)'}</span>
           </p>
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <input
-            type="text"
-            placeholder="Search leads by name, email, phone..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-slate-950 border border-slate-800 text-xs text-white rounded-xl px-4 py-2.5 w-full sm:w-64 focus:outline-none focus:border-blue-500"
-          />
-
-          <select
-            value={trackFilter}
-            onChange={(e) => setTrackFilter(e.target.value as 'ALL' | 'Recruit' | 'Client')}
-            className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-xl px-3 py-2.5 cursor-pointer focus:outline-none focus:border-blue-500"
-          >
-            <option value="ALL">All Tracks</option>
-            <option value="Recruit">Recruits Only</option>
-            <option value="Client">Clients Only</option>
-          </select>
-        </div>
+        <input
+          type="text"
+          placeholder="Search leads..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="bg-slate-950 border border-slate-800 text-xs text-white rounded-xl px-4 py-2.5 w-full md:w-64 focus:outline-none focus:border-blue-500"
+        />
       </div>
 
-      {/* Master Contacts Table */}
+      {/* Entity Pillar Firewall Tabs */}
+      <div className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono uppercase text-slate-500 font-bold mr-2">Firewall Vertical:</span>
+          {(['WFG Financial', 'Motivational Speaking', 'UNITE Charity', 'ALL'] as const).map((pillar) => (
+            <button
+              key={pillar}
+              type="button"
+              onClick={() => {
+                setActivePillar(pillar);
+                setActiveSubTrack('ALL');
+              }}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition ${
+                activePillar === pillar
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                  : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              {pillar}
+            </button>
+          ))}
+        </div>
+
+        {/* WFG Sub-Track Filters (Shown only when WFG Financial is selected) */}
+        {activePillar === 'WFG Financial' && (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono uppercase text-slate-500 font-bold mr-1">Category:</span>
+            {(['ALL', 'Recruit', 'Business Services', 'Personal Advisory'] as const).map((sub) => (
+              <button
+                key={sub}
+                type="button"
+                onClick={() => setActiveSubTrack(sub)}
+                className={`px-2.5 py-1 rounded-lg text-[11px] font-medium transition ${
+                  activeSubTrack === sub
+                    ? 'bg-emerald-600/30 text-emerald-300 border border-emerald-500/50'
+                    : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                {sub}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Contacts Table */}
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs border-collapse">
           <thead>
             <tr className="border-b border-slate-800 text-slate-400 font-mono uppercase text-[10px] tracking-wider bg-slate-950/50">
-              <th className="p-3.5">Lead Name & Contact</th>
-              <th className="p-3.5">Track</th>
-              <th className="p-3.5">Where in Process (Stage)</th>
+              <th className="p-3.5">Lead Name & Info</th>
+              <th className="p-3.5">Vertical / Category</th>
+              <th className="p-3.5">Process Stage</th>
               <th className="p-3.5">Last Contacted</th>
               <th className="p-3.5 text-center">Auto-Nurture</th>
-              <th className="p-3.5 text-right">Agent</th>
+              <th className="p-3.5 text-right">Assigned Agent</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-800/60">
             {filteredContacts.length === 0 ? (
               <tr>
                 <td colSpan={6} className="text-center py-8 text-slate-500 font-mono">
-                  No matching leads found in master directory.
+                  No firewalled contacts found matching this view.
                 </td>
               </tr>
             ) : (
               filteredContacts.map((contact) => (
                 <tr key={contact.id} className="hover:bg-slate-800/40 transition">
-                  {/* Contact Details */}
+                  {/* Lead Info */}
                   <td className="p-3.5">
                     <div className="font-bold text-white text-sm">{contact.name}</div>
                     <div className="text-slate-400 text-[11px] font-mono mt-0.5">
-                      {contact.email || contact.phone || 'No direct contact info'}
+                      {contact.email || contact.phone || 'No contact details'}
                     </div>
                   </td>
 
-                  {/* Track Badge */}
+                  {/* Pillar & Subtrack */}
                   <td className="p-3.5">
-                    <span
-                      className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-bold font-mono uppercase ${
-                        contact.type === 'Recruit'
-                          ? 'bg-purple-950/80 text-purple-300 border border-purple-800/50'
-                          : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/50'
-                      }`}
-                    >
-                      {contact.type || 'Client'}
-                    </span>
+                    <div className="font-bold text-slate-200 text-xs">
+                      {contact.entity_pillar || 'WFG Financial'}
+                    </div>
+                    <div className="text-[10px] text-blue-400 font-mono mt-0.5">
+                      {contact.sub_track || (contact.type === 'Recruit' ? 'Recruit' : 'Personal Advisory')}
+                    </div>
                   </td>
 
                   {/* Stage Dropdown */}
@@ -187,12 +238,10 @@ export default function MasterContactTable({ initialContacts }: MasterContactTab
 
                   {/* Auto Nurture Toggle */}
                   <td className="p-3.5 text-center">
-                    {contact.type === 'Recruit' ? (
+                    {(contact.sub_track === 'Recruit' || contact.type === 'Recruit') ? (
                       <button
                         type="button"
-                        onClick={() =>
-                          handleNurtureToggle(contact.id, !!contact.nurture_active)
-                        }
+                        onClick={() => handleNurtureToggle(contact.id, !!contact.nurture_active)}
                         disabled={updatingId === contact.id}
                         className={`px-3 py-1 rounded-full text-[10px] font-bold font-mono transition ${
                           contact.nurture_active
@@ -207,7 +256,7 @@ export default function MasterContactTable({ initialContacts }: MasterContactTab
                     )}
                   </td>
 
-                  {/* Assigned Agent */}
+                  {/* Agent Badge */}
                   <td className="p-3.5 text-right font-mono font-semibold text-blue-400">
                     {contact.agent || 'Sean'}
                   </td>
