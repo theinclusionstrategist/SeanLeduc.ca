@@ -3,6 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { revalidatePath } from 'next/cache';
 import { Contact, CRMFilterState, PaginatedResponse } from '@/types/crm';
+import { dispatchLeadMovementAlert } from '@/lib/notifications';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey =
@@ -68,21 +69,37 @@ export async function updateContactStage(
     const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
     const nowIso = new Date().toISOString();
 
+    // 1. Fetch current lead data before update to identify owner & old stage
+    let fetchQuery = supabase.from('contacts').select('name, stage, agent').single();
+    fetchQuery = isNumericId
+      ? fetchQuery.eq('id', Number(contactId))
+      : fetchQuery.eq('ID', contactId);
+
+    const { data: currentContact } = await fetchQuery;
+
+    // 2. Perform Update
     let updateQuery = supabase.from('contacts').update({
       stage: newStage,
       'last contact': nowIso,
       Updated: nowIso,
     });
 
-    if (isNumericId) {
-      updateQuery = updateQuery.eq('id', Number(contactId));
-    } else {
-      updateQuery = updateQuery.eq('ID', contactId);
-    }
+    updateQuery = isNumericId
+      ? updateQuery.eq('id', Number(contactId))
+      : updateQuery.eq('ID', contactId);
 
     const { error } = await updateQuery;
-
     if (error) throw new Error(error.message);
+
+    // 3. Notify ONLY the assigned agent (Sean or Shaun) of lead movement
+    if (currentContact && currentContact.stage !== newStage) {
+      await dispatchLeadMovementAlert({
+        contactName: currentContact.name || 'Lead',
+        oldStage: currentContact.stage || 'Initial Stage',
+        newStage,
+        assignedAgent: currentContact.agent || 'Sean',
+      });
+    }
 
     revalidatePath('/portal');
     return { success: true };
@@ -92,7 +109,6 @@ export async function updateContactStage(
   }
 }
 
-// Wrapper export expected by KanbanPipeline component
 export async function moveContactStage(
   contactId: string | number,
   newStage: string
