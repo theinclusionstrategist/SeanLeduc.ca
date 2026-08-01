@@ -23,7 +23,8 @@ export interface InclusyRequestBody {
 // Service Initialization
 // ============================================================================
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabaseServiceKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Fail-fast environment check for critical infrastructure
 if (!process.env.GEMINI_API_KEY) {
@@ -82,11 +83,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 2. Format Messages for Gemini API (REST v1beta)
-    const formattedContents = messages.map((msg) => ({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }],
-    }));
+    // 2. Format Messages for Gemini API (Filter out any system messages from contents)
+    const formattedContents = messages
+      .filter((msg) => msg.role !== 'system')
+      .map((msg) => ({
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: msg.content }],
+      }));
 
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
@@ -117,7 +120,9 @@ export async function POST(req: NextRequest) {
     if (!geminiResponse.ok) {
       const errorData = await geminiResponse.json();
       console.error('[Gemini API Error]:', errorData);
-      throw new Error(`Gemini service responded with status ${geminiResponse.status}`);
+      throw new Error(
+        `Gemini service responded with status ${geminiResponse.status}`
+      );
     }
 
     const geminiData = await geminiResponse.json();
@@ -129,7 +134,7 @@ export async function POST(req: NextRequest) {
 
     // 4. Asynchronous Enterprise Logging (Supabase)
     if (supabase) {
-      // Fire and forget logging so user latency isn't delayed
+      // Fire-and-forget logging so user latency isn't delayed
       (async () => {
         try {
           // Log interaction
@@ -170,12 +175,14 @@ export async function POST(req: NextRequest) {
         latencyMs,
       },
     });
-  } catch (error: any) {
-    console.error('[Inclusy Route Handler Error]:', error.message);
+  } catch (error: unknown) {
+    const message =
+      error instanceof Error ? error.message : 'Unknown server error';
+    console.error('[Inclusy Route Handler Error]:', message);
     return NextResponse.json(
       {
         error: 'Inclusy encountered an internal communication error.',
-        details: process.env.NODE_ENV === 'development' ? error.message : undefined,
+        details: process.env.NODE_ENV === 'development' ? message : undefined,
       },
       { status: 500 }
     );
@@ -189,21 +196,48 @@ function detectIntents(message: string): string[] {
   const tags: string[] = [];
   const lower = message.toLowerCase();
 
-  if (lower.includes('keyperson') || lower.includes('buy sell') || lower.includes('group benefit') || lower.includes('corporate')) {
+  if (
+    lower.includes('keyperson') ||
+    lower.includes('buy sell') ||
+    lower.includes('group benefit') ||
+    lower.includes('corporate')
+  ) {
     tags.push('Corporate Financial');
   }
-  if (lower.includes('rdsp') || lower.includes('disability') || lower.includes('dtc')) {
+  if (
+    lower.includes('rdsp') ||
+    lower.includes('disability') ||
+    lower.includes('dtc')
+  ) {
     tags.push('Disability & Inclusive Planning');
   }
-  if (lower.includes('rrsp') || lower.includes('tfsa') || lower.includes('fhsa') || lower.includes('life insurance')) {
+  if (
+    lower.includes('rrsp') ||
+    lower.includes('tfsa') ||
+    lower.includes('fhsa') ||
+    lower.includes('life insurance')
+  ) {
     tags.push('Personal Advisory');
   }
-  if (lower.includes('speak') || lower.includes('keynote') || lower.includes('event') || lower.includes('workshop')) {
+  if (
+    lower.includes('speak') ||
+    lower.includes('keynote') ||
+    lower.includes('event') ||
+    lower.includes('workshop')
+  ) {
     tags.push('Motivational Speaking');
   }
-  if (lower.includes('charity') || lower.includes('unite') || lower.includes('donate') || lower.includes('sponsor')) {
+  if (
+    lower.includes('charity') ||
+    lower.includes('unite') ||
+    lower.includes('donate') ||
+    lower.includes('sponsor')
+  ) {
     tags.push('UNITE Charity');
   }
+
+  return tags;
+}
 
   return tags;
 }
