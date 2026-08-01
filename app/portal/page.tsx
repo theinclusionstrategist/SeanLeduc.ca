@@ -1,15 +1,15 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import {
-  LayoutDashboard,
   Kanban,
   Users,
   BarChart3,
   PhoneCall,
   Download,
+  Upload,
   Edit3,
   Plus,
   Search,
@@ -27,10 +27,14 @@ import {
   UserPlus,
   Phone,
   Mail,
-  FileText,
   Loader2,
-  ArrowUpRight,
-  ShieldCheck
+  ShieldCheck,
+  CheckSquare,
+  Square,
+  Trash2,
+  DollarSign,
+  ArrowUpDown,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface Lead {
@@ -43,6 +47,7 @@ interface Lead {
   entity_pillar: 'financial' | 'speaking' | 'charity';
   sub_track?: string;
   stage: string;
+  estimated_value?: number;
   notes?: string;
   assigned_agent_id?: string;
   created_at: string;
@@ -58,14 +63,40 @@ const STAGE_COLUMNS = [
 export default function PortalDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'analytics' | 'funnel' | 'directory'>('funnel');
+  const [activeTab, setActiveTab] = useState<'funnel' | 'spreadsheet' | 'analytics'>('spreadsheet');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPillar, setSelectedPillar] = useState<string>('all');
   const [userName, setUserName] = useState<string>('Agent');
   
-  // Modal State
+  // Selection & Bulk Batch State
+  const [selectedLeadIds, setSelectedLeadIds] = useState<string[]>([]);
+
+  // Sorting State
+  const [sortField, setSortField] = useState<'created_at' | 'first_name' | 'estimated_value'>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Modals State
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // New Lead Form State
+  const [newLead, setNewLead] = useState<Partial<Lead>>({
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    entity_pillar: 'financial',
+    sub_track: 'recruiting',
+    stage: 'new',
+    estimated_value: 0,
+    notes: ''
+  });
+
+  // CSV Import File Ref
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
 
   const supabase = createClientComponentClient();
   const router = useRouter();
@@ -99,6 +130,7 @@ export default function PortalDashboard() {
     router.push('/login');
   };
 
+  // --- SINGLE & BATCH UPDATE HANDLERS ---
   const handleStageChange = async (leadId: string, newStage: string) => {
     const { error } = await supabase
       .from('leads')
@@ -112,6 +144,42 @@ export default function PortalDashboard() {
     }
   };
 
+  const handleBatchStageChange = async (newStage: string) => {
+    if (selectedLeadIds.length === 0) return;
+    setIsSaving(true);
+
+    const { error } = await supabase
+      .from('leads')
+      .update({ stage: newStage })
+      .in('id', selectedLeadIds);
+
+    if (!error) {
+      setLeads((prev) =>
+        prev.map((l) => (selectedLeadIds.includes(l.id) ? { ...l, stage: newStage } : l))
+      );
+      setSelectedLeadIds([]);
+    }
+    setIsSaving(false);
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedLeadIds.length === 0) return;
+    if (!confirm(`Are you sure you want to delete ${selectedLeadIds.length} lead(s)?`)) return;
+    setIsSaving(true);
+
+    const { error } = await supabase
+      .from('leads')
+      .delete()
+      .in('id', selectedLeadIds);
+
+    if (!error) {
+      setLeads((prev) => prev.filter((l) => !selectedLeadIds.includes(l.id)));
+      setSelectedLeadIds([]);
+    }
+    setIsSaving(false);
+  };
+
+  // --- SAVE & CREATE HANDLERS ---
   const handleSaveLead = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLead) return;
@@ -127,6 +195,7 @@ export default function PortalDashboard() {
         entity_pillar: editingLead.entity_pillar,
         sub_track: editingLead.sub_track,
         stage: editingLead.stage,
+        estimated_value: editingLead.estimated_value,
         notes: editingLead.notes,
       })
       .eq('id', editingLead.id);
@@ -138,6 +207,117 @@ export default function PortalDashboard() {
       setEditingLead(null);
     }
     setIsSaving(false);
+  };
+
+  const handleCreateLead = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSaving(true);
+
+    const { data, error } = await supabase
+      .from('leads')
+      .insert([newLead])
+      .select();
+
+    if (!error && data) {
+      setLeads((prev) => [data[0], ...prev]);
+      setIsAddModalOpen(false);
+      setNewLead({
+        first_name: '',
+        last_name: '',
+        email: '',
+        phone: '',
+        entity_pillar: 'financial',
+        sub_track: 'recruiting',
+        stage: 'new',
+        estimated_value: 0,
+        notes: ''
+      });
+    }
+    setIsSaving(false);
+  };
+
+  // --- SPREADSHEET CSV IMPORT & EXPORT ENGINE ---
+  const exportToCSV = () => {
+    const leadsToExport = selectedLeadIds.length > 0
+      ? leads.filter(l => selectedLeadIds.includes(l.id))
+      : filteredLeads;
+
+    const headers = ['First Name', 'Last Name', 'Email', 'Phone', 'Pillar', 'Sub-Track', 'Stage', 'Estimated Value ($)', 'Created At'];
+    const rows = leadsToExport.map(l => [
+      `"${l.first_name || ''}"`,
+      `"${l.last_name || ''}"`,
+      `"${l.email}"`,
+      `"${l.phone || ''}"`,
+      `"${l.entity_pillar}"`,
+      `"${l.sub_track || ''}"`,
+      `"${l.stage}"`,
+      l.estimated_value || 0,
+      `"${new Date(l.created_at).toISOString()}"`
+    ]);
+
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `TIS_Leads_Export_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setImportStatus('Parsing spreadsheet file...');
+    const reader = new FileReader();
+
+    reader.onload = async (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split(/\r\n|\n/);
+        if (lines.length < 2) {
+          setImportStatus('Error: CSV file appears to be empty or missing rows.');
+          return;
+        }
+
+        const parsedLeads: Partial<Lead>[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          if (!lines[i].trim()) continue;
+          const cols = lines[i].split(',').map(c => c.replace(/^"|"$/g, '').trim());
+          if (cols.length >= 3) {
+            parsedLeads.push({
+              first_name: cols[0] || 'Imported',
+              last_name: cols[1] || 'Lead',
+              email: cols[2],
+              phone: cols[3] || '',
+              entity_pillar: (cols[4]?.toLowerCase() as any) || 'financial',
+              sub_track: cols[5] || 'import',
+              stage: cols[6] || 'new',
+              estimated_value: parseFloat(cols[7]) || 0,
+            });
+          }
+        }
+
+        setImportStatus(`Uploading ${parsedLeads.length} leads to database...`);
+        const { data, error } = await supabase.from('leads').insert(parsedLeads).select();
+
+        if (!error && data) {
+          setLeads((prev) => [...data, ...prev]);
+          setImportStatus(`Success! Added ${data.length} records.`);
+          setTimeout(() => {
+            setIsImportModalOpen(false);
+            setImportStatus(null);
+          }, 1500);
+        } else {
+          setImportStatus(`Import Error: ${error?.message || 'Check CSV formatting'}`);
+        }
+      } catch (err) {
+        setImportStatus('Failed to process CSV layout.');
+      }
+    };
+
+    reader.readAsText(file);
   };
 
   // 📇 Mobile Contact Export (.vcf file generation)
@@ -165,7 +345,6 @@ export default function PortalDashboard() {
     document.body.removeChild(link);
   };
 
-  // Helper Stage Normalizer
   const getNormalizedStage = (stageStr: string): string => {
     const s = (stageStr || '').toLowerCase();
     if (s.includes('converted') || s.includes('won') || s.includes('client')) return 'converted';
@@ -174,72 +353,109 @@ export default function PortalDashboard() {
     return 'new';
   };
 
-  // Filtered Leads
-  const filteredLeads = leads.filter((lead) => {
-    const fullName = `${lead.first_name || ''} ${lead.last_name || ''} ${lead.name || ''}`.toLowerCase();
-    const matchesSearch = fullName.includes(searchTerm.toLowerCase()) || lead.email.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesPillar = selectedPillar === 'all' || lead.entity_pillar === selectedPillar;
-    return matchesSearch && matchesPillar;
-  });
+  // Filtered & Sorted Leads
+  const filteredLeads = leads
+    .filter((lead) => {
+      const fullName = `${lead.first_name || ''} ${lead.last_name || ''} ${lead.name || ''}`.toLowerCase();
+      const matchesSearch = fullName.includes(searchTerm.toLowerCase()) || lead.email.toLowerCase().includes(searchTerm.toLowerCase()) || (lead.phone && lead.phone.includes(searchTerm));
+      const matchesPillar = selectedPillar === 'all' || lead.entity_pillar === selectedPillar;
+      return matchesSearch && matchesPillar;
+    })
+    .sort((a, b) => {
+      let valA: any = a[sortField] || '';
+      let valB: any = b[sortField] || '';
+      if (sortField === 'estimated_value') {
+        valA = a.estimated_value || 0;
+        valB = b.estimated_value || 0;
+      }
+      if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
+      if (valA > valB) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
 
-  // KPI Calculations
+  // KPI & Metric Calculations
   const totalLeads = leads.length;
+  const totalPipelineValue = leads.reduce((sum, l) => sum + (l.estimated_value || 0), 0);
   const convertedCount = leads.filter(l => getNormalizedStage(l.stage) === 'converted').length;
   const conversionRate = totalLeads > 0 ? ((convertedCount / totalLeads) * 100).toFixed(1) : '0';
+
   const financialCount = leads.filter(l => l.entity_pillar === 'financial').length;
   const speakingCount = leads.filter(l => l.entity_pillar === 'speaking').length;
   const charityCount = leads.filter(l => l.entity_pillar === 'charity').length;
 
+  // Toggle Selection
+  const toggleSelectAll = () => {
+    if (selectedLeadIds.length === filteredLeads.length) {
+      setSelectedLeadIds([]);
+    } else {
+      setSelectedLeadIds(filteredLeads.map((l) => l.id));
+    }
+  };
+
+  const toggleSelectLead = (id: string) => {
+    setSelectedLeadIds((prev) =>
+      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
+    );
+  };
+
   const getPillarBadge = (pillar: string) => {
     switch (pillar) {
       case 'financial':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><Briefcase className="w-3 h-3" /> Financial</span>;
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"><Briefcase className="w-3 h-3" /> Financial</span>;
       case 'speaking':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20"><Mic className="w-3 h-3" /> Speaking</span>;
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-purple-500/10 text-purple-400 border border-purple-500/20"><Mic className="w-3 h-3" /> Speaking</span>;
       case 'charity':
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20"><Heart className="w-3 h-3" /> Charity</span>;
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20"><Heart className="w-3 h-3" /> Charity</span>;
       default:
-        return <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20">General</span>;
+        return <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-slate-500/10 text-slate-400 border border-slate-500/20">General</span>;
     }
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col antialiased selection:bg-blue-600 selection:text-white">
       
-      {/* EXECUTIVE NAVIGATION BAR */}
+      {/* NAVIGATION BAR */}
       <header className="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-xl border-b border-slate-800">
-        <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             
-            {/* Brand Title */}
+            {/* Brand Header */}
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 border border-white/10">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold tracking-tight text-white text-lg">TIS Executive Command</span>
+                  <span className="font-extrabold tracking-tight text-white text-lg">TIS Enterprise Portal</span>
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider uppercase text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
-                    <ShieldCheck className="w-3 h-3" /> RLS Secured
+                    <ShieldCheck className="w-3 h-3" /> Firewalled RLS
                   </span>
                 </div>
                 <p className="text-[11px] text-slate-400">The Inclusion Strategist • Multi-Vertical Platform</p>
               </div>
             </div>
 
-            {/* Top Right User Bar */}
+            {/* Right Quick Actions & Profile */}
             <div className="flex items-center gap-3">
-              <div className="hidden sm:flex items-center gap-3 px-3.5 py-1.5 bg-slate-950 border border-slate-800 rounded-xl">
+              <button
+                onClick={() => setIsAddModalOpen(true)}
+                className="px-3.5 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-blue-600/20 flex items-center gap-2 transition"
+              >
+                <Plus className="w-4 h-4" />
+                <span className="hidden sm:inline">Add Opportunity</span>
+              </button>
+
+              <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-xl">
                 <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-xs text-slate-300">Active Agent: <strong className="text-white capitalize">{userName}</strong></span>
+                <span className="text-xs text-slate-300">Agent: <strong className="text-white capitalize">{userName}</strong></span>
               </div>
 
               <button
                 onClick={handleSignOut}
-                className="p-2 sm:px-3 sm:py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-semibold transition flex items-center gap-2"
+                className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-semibold transition"
+                title="Sign Out"
               >
                 <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline">Sign Out</span>
               </button>
             </div>
 
@@ -248,13 +464,23 @@ export default function PortalDashboard() {
       </header>
 
       {/* DASHBOARD BODY */}
-      <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
+      <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
         
-        {/* VIEW NAVIGATION & TOOLBAR */}
+        {/* VIEW TOOLBAR & SPREADSHEET CONTROLS */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
           
           {/* Navigation Tabs */}
-          <div className="flex items-center bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 self-start">
+          <div className="flex items-center bg-slate-900 p-1.5 rounded-2xl border border-slate-800 self-start">
+            <button
+              onClick={() => setActiveTab('spreadsheet')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
+                activeTab === 'spreadsheet' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Spreadsheet Grid</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('funnel')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
@@ -262,7 +488,7 @@ export default function PortalDashboard() {
               }`}
             >
               <Kanban className="w-4 h-4" />
-              <span>Pipeline Funnel</span>
+              <span>Kanban Funnel</span>
             </button>
 
             <button
@@ -274,19 +500,9 @@ export default function PortalDashboard() {
               <BarChart3 className="w-4 h-4" />
               <span>Analytics & KPIs</span>
             </button>
-
-            <button
-              onClick={() => setActiveTab('directory')}
-              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition ${
-                activeTab === 'directory' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/20' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              <span>Lead Directory</span>
-            </button>
           </div>
 
-          {/* Search & Pillar Filters */}
+          {/* Search, Filters, CSV Import/Export */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[240px]">
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -294,15 +510,15 @@ export default function PortalDashboard() {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search name, email, or phone..."
+                placeholder="Search name, email, phone..."
                 className="w-full pl-10 pr-4 py-2 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
 
             {/* Pillar Filter Tabs */}
-            <div className="flex items-center gap-1.5 bg-slate-900 p-1 rounded-xl border border-slate-800">
+            <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
               {[
-                { id: 'all', label: 'All Pillars' },
+                { id: 'all', label: 'All' },
                 { id: 'financial', label: 'Financial' },
                 { id: 'speaking', label: 'Speaking' },
                 { id: 'charity', label: 'Charity' },
@@ -311,7 +527,7 @@ export default function PortalDashboard() {
                   key={p.id}
                   onClick={() => setSelectedPillar(p.id)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                    selectedPillar === p.id ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                    selectedPillar === p.id ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   {p.label}
@@ -319,65 +535,271 @@ export default function PortalDashboard() {
               ))}
             </div>
 
-            <button
-              onClick={fetchLeads}
-              className="p-2.5 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition"
-              title="Refresh Pipeline"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
+            {/* CSV Import/Export Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsImportModalOpen(true)}
+                className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition flex items-center gap-2"
+                title="Import CSV File"
+              >
+                <Upload className="w-3.5 h-3.5 text-blue-400" />
+                <span className="hidden sm:inline">Import CSV</span>
+              </button>
+
+              <button
+                onClick={exportToCSV}
+                className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition flex items-center gap-2"
+                title="Export Filtered CSV File"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="hidden sm:inline">Export CSV</span>
+              </button>
+
+              <button
+                onClick={fetchLeads}
+                className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition"
+                title="Refresh Pipeline"
+              >
+                <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
         </div>
 
-        {/* METRIC STRIP */}
+        {/* METRICS & FINANCIAL KPI STRIP */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
+            <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
+              <span>Pipeline Value</span>
+              <DollarSign className="w-4 h-4 text-emerald-400" />
+            </div>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-extrabold text-white">${totalPipelineValue.toLocaleString()}</span>
+              <span className="text-xs text-emerald-400 font-medium">gross potential</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
             <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
               <span>Total Opportunities</span>
               <Users className="w-4 h-4 text-blue-400" />
             </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-white">{totalLeads}</span>
-              <span className="text-xs text-slate-500">records</span>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-extrabold text-white">{totalLeads}</span>
+              <span className="text-xs text-slate-500">active records</span>
             </div>
           </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
             <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-              <span>Conversion Rate</span>
-              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              <span>Conversion Velocity</span>
+              <TrendingUp className="w-4 h-4 text-purple-400" />
             </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-white">{conversionRate}%</span>
-              <span className="text-xs text-emerald-400 font-medium">pipeline velocity</span>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-extrabold text-white">{conversionRate}%</span>
+              <span className="text-xs text-purple-400 font-medium">closed-won ratio</span>
             </div>
           </div>
 
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
+          <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
             <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-              <span>Financial (WFG)</span>
-              <Briefcase className="w-4 h-4 text-emerald-400" />
+              <span>Pillar Distribution</span>
+              <Briefcase className="w-4 h-4 text-amber-400" />
             </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-white">{financialCount}</span>
-              <span className="text-xs text-slate-500">active leads</span>
-            </div>
-          </div>
-
-          <div className="p-5 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
-            <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-              <span>Speaking / Charity</span>
-              <Mic className="w-4 h-4 text-purple-400" />
-            </div>
-            <div className="mt-3 flex items-baseline gap-2">
-              <span className="text-3xl font-extrabold text-white">{speakingCount + charityCount}</span>
-              <span className="text-xs text-slate-500">engagements</span>
+            <div className="mt-2 text-xs text-slate-300 font-mono flex items-center justify-between pt-1">
+              <span className="text-emerald-400">WFG: {financialCount}</span>
+              <span className="text-purple-400">Speak: {speakingCount}</span>
+              <span className="text-amber-400">Charity: {charityCount}</span>
             </div>
           </div>
         </div>
 
-        {/* TAB 1: KANBAN FUNNEL BOARD */}
+        {/* BATCH ACTION FLOATING BAR (Appears when checkboxes are selected) */}
+        {selectedLeadIds.length > 0 && (
+          <div className="p-3 bg-blue-600/10 border border-blue-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-4 backdrop-blur-xl animate-fade-in">
+            <div className="flex items-center gap-3 text-xs text-blue-300 font-bold">
+              <CheckSquare className="w-4 h-4 text-blue-400" />
+              <span>{selectedLeadIds.length} lead(s) selected</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">Batch Change Stage:</span>
+              <select
+                onChange={(e) => handleBatchStageChange(e.target.value)}
+                className="bg-slate-950 border border-slate-800 text-xs text-slate-200 rounded-lg px-2.5 py-1 focus:outline-none"
+              >
+                <option value="">Select Stage...</option>
+                <option value="new">New Opportunity</option>
+                <option value="nurture">Active Nurture</option>
+                <option value="meeting">Meeting Scheduled</option>
+                <option value="converted">Converted / Won</option>
+              </select>
+
+              <button
+                onClick={exportToCSV}
+                className="px-3 py-1 bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-white rounded-lg flex items-center gap-1"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Export Selected</span>
+              </button>
+
+              <button
+                onClick={handleBatchDelete}
+                className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-xs font-semibold text-red-400 rounded-lg flex items-center gap-1"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete Selected</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 1: SPREADSHEET GRID VIEW */}
+        {activeTab === 'spreadsheet' && (
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-slate-800 bg-slate-950 text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+                    <th className="py-3.5 px-4 w-10 text-center">
+                      <button onClick={toggleSelectAll} className="text-slate-400 hover:text-white">
+                        {selectedLeadIds.length === filteredLeads.length && filteredLeads.length > 0 ? (
+                          <CheckSquare className="w-4 h-4 text-blue-400" />
+                        ) : (
+                          <Square className="w-4 h-4" />
+                        )}
+                      </button>
+                    </th>
+                    <th className="py-3.5 px-4 cursor-pointer hover:text-white transition" onClick={() => { setSortField('first_name'); setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); }}>
+                      <div className="flex items-center gap-1">
+                        <span>Lead Name</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-500" />
+                      </div>
+                    </th>
+                    <th className="py-3.5 px-4">Contact Info & Phone</th>
+                    <th className="py-3.5 px-4">Pillar</th>
+                    <th className="py-3.5 px-4">Sub-Track</th>
+                    <th className="py-3.5 px-4">Funnel Stage</th>
+                    <th className="py-3.5 px-4 cursor-pointer hover:text-white transition" onClick={() => { setSortField('estimated_value'); setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc'); }}>
+                      <div className="flex items-center gap-1">
+                        <span>Est. Value ($)</span>
+                        <ArrowUpDown className="w-3 h-3 text-slate-500" />
+                      </div>
+                    </th>
+                    <th className="py-3.5 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 text-xs font-mono">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={8} className="py-20 text-center text-slate-400">
+                        <Loader2 className="w-6 h-6 text-blue-500 animate-spin mx-auto mb-2" />
+                        <span>Syncing spreadsheet rows...</span>
+                      </td>
+                    </tr>
+                  ) : filteredLeads.length === 0 ? (
+                    <tr>
+                      <td colSpan={8} className="py-16 text-center text-slate-500 font-sans">
+                        No rows match your criteria. Click <strong>"Add Opportunity"</strong> or <strong>"Import CSV"</strong> above.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredLeads.map((lead) => {
+                      const displayName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.name || 'Unnamed';
+                      const isSelected = selectedLeadIds.includes(lead.id);
+
+                      return (
+                        <tr key={lead.id} className={`hover:bg-slate-800/50 transition ${isSelected ? 'bg-blue-500/5' : ''}`}>
+                          {/* Checkbox Column */}
+                          <td className="py-3 px-4 text-center">
+                            <button onClick={() => toggleSelectLead(lead.id)} className="text-slate-400 hover:text-white">
+                              {isSelected ? <CheckSquare className="w-4 h-4 text-blue-400" /> : <Square className="w-4 h-4" />}
+                            </button>
+                          </td>
+
+                          {/* Name */}
+                          <td className="py-3 px-4 font-sans">
+                            <div className="font-bold text-white text-sm">{displayName}</div>
+                            {lead.notes && <div className="text-[10px] text-slate-500 truncate max-w-[180px]">{lead.notes}</div>}
+                          </td>
+
+                          {/* Email / Phone */}
+                          <td className="py-3 px-4 font-sans">
+                            <div className="text-slate-300">{lead.email}</div>
+                            {lead.phone ? (
+                              <a href={`tel:${lead.phone}`} className="text-[11px] text-emerald-400 font-mono hover:underline inline-flex items-center gap-1 mt-0.5">
+                                <PhoneCall className="w-3 h-3" />
+                                <span>{lead.phone}</span>
+                              </a>
+                            ) : (
+                              <span className="text-[11px] text-slate-600">—</span>
+                            )}
+                          </td>
+
+                          {/* Pillar */}
+                          <td className="py-3 px-4 font-sans">{getPillarBadge(lead.entity_pillar)}</td>
+
+                          {/* Sub Track */}
+                          <td className="py-3 px-4 text-slate-400 font-sans">
+                            {lead.sub_track ? (
+                              <span className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-[11px]">
+                                {lead.sub_track}
+                              </span>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+
+                          {/* Funnel Stage Dropdown */}
+                          <td className="py-3 px-4 font-sans">
+                            <select
+                              value={getNormalizedStage(lead.stage)}
+                              onChange={(e) => handleStageChange(lead.id, e.target.value)}
+                              className="bg-slate-950 border border-slate-800 text-xs text-slate-300 font-semibold rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer hover:bg-slate-800 transition"
+                            >
+                              <option value="new">New Opportunity</option>
+                              <option value="nurture">Active Nurture</option>
+                              <option value="meeting">Meeting Scheduled</option>
+                              <option value="converted">Converted / Won</option>
+                            </select>
+                          </td>
+
+                          {/* Deal Value */}
+                          <td className="py-3 px-4 text-emerald-400 font-bold font-mono">
+                            ${(lead.estimated_value || 0).toLocaleString()}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-4 text-right font-sans">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                onClick={() => downloadVCard(lead)}
+                                className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-blue-400 rounded-lg transition"
+                                title="Export Contact to Phone (.vcf)"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                onClick={() => setEditingLead(lead)}
+                                className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white rounded-lg transition"
+                                title="Edit Lead Record"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TAB 2: KANBAN FUNNEL BOARD VIEW */}
         {activeTab === 'funnel' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
             {STAGE_COLUMNS.map((col) => {
@@ -386,7 +808,6 @@ export default function PortalDashboard() {
 
               return (
                 <div key={col.id} className={`rounded-2xl border ${col.border} ${col.bg} backdrop-blur-xl p-4 flex flex-col min-h-[600px]`}>
-                  {/* Column Header */}
                   <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-800/80">
                     <div className="flex items-center gap-2">
                       <ColumnIcon className="w-4 h-4 text-slate-400" />
@@ -397,101 +818,51 @@ export default function PortalDashboard() {
                     </span>
                   </div>
 
-                  {/* Cards Container */}
                   <div className="space-y-3 flex-1">
-                    {loading ? (
-                      <div className="py-12 text-center">
-                        <Loader2 className="w-6 h-6 text-blue-500 animate-spin mx-auto" />
-                      </div>
-                    ) : colLeads.length === 0 ? (
-                      <div className="py-16 text-center text-xs text-slate-500 border border-dashed border-slate-800/80 rounded-xl">
-                        No opportunities in this stage
-                      </div>
-                    ) : (
-                      colLeads.map((lead) => {
-                        const displayName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.name || 'Unnamed Contact';
-
-                        return (
-                          <div key={lead.id} className="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition shadow-xl space-y-3 group relative">
-                            
-                            {/* Card Top Row */}
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <h4 className="font-bold text-sm text-white group-hover:text-blue-400 transition">
-                                  {displayName}
-                                </h4>
-                                {lead.sub_track && (
-                                  <span className="text-[10px] text-slate-400 bg-slate-950 px-2 py-0.5 rounded border border-slate-800 mt-1 inline-block">
-                                    {lead.sub_track}
-                                  </span>
-                                )}
-                              </div>
-
-                              <button
-                                onClick={() => setEditingLead(lead)}
-                                className="p-1.5 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg transition"
-                                title="Edit Lead Details"
-                              >
-                                <Edit3 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-
-                            {/* Contact Details & Quick Dial */}
-                            <div className="space-y-1.5 text-xs text-slate-400">
-                              <div className="flex items-center gap-2">
-                                <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                <span className="truncate">{lead.email}</span>
-                              </div>
-                              
-                              {lead.phone && (
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center gap-2 text-slate-300 font-mono">
-                                    <Phone className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                    <span>{lead.phone}</span>
-                                  </div>
-                                  <a
-                                    href={`tel:${lead.phone}`}
-                                    className="p-1 text-emerald-400 hover:bg-emerald-500/10 rounded transition"
-                                    title="Call Phone Number"
-                                  >
-                                    <PhoneCall className="w-3.5 h-3.5" />
-                                  </a>
-                                </div>
-                              )}
-                            </div>
-
-                            {/* Card Footer: Pillar + Mobile vCard Export + Move Dropdown */}
-                            <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                              {getPillarBadge(lead.entity_pillar)}
-
-                              <div className="flex items-center gap-1.5">
-                                {/* Save to Phone Button */}
-                                <button
-                                  onClick={() => downloadVCard(lead)}
-                                  className="p-1.5 text-slate-400 hover:text-blue-400 hover:bg-blue-500/10 rounded-lg transition"
-                                  title="Export vCard to Phone Contacts"
-                                >
-                                  <Download className="w-3.5 h-3.5" />
-                                </button>
-
-                                {/* Stage Selector */}
-                                <select
-                                  value={getNormalizedStage(lead.stage)}
-                                  onChange={(e) => handleStageChange(lead.id, e.target.value)}
-                                  className="bg-slate-950 border border-slate-800 text-[11px] text-slate-300 font-semibold rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer hover:bg-slate-800 transition"
-                                >
-                                  <option value="new">New</option>
-                                  <option value="nurture">Nurture</option>
-                                  <option value="meeting">Meeting</option>
-                                  <option value="converted">Won</option>
-                                </select>
-                              </div>
-                            </div>
-
+                    {colLeads.map((lead) => (
+                      <div key={lead.id} className="p-4 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition shadow-xl space-y-3 group relative">
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <h4 className="font-bold text-sm text-white group-hover:text-blue-400 transition">
+                              {lead.first_name || lead.name || 'Unnamed'} {lead.last_name || ''}
+                            </h4>
+                            <span className="text-xs text-emerald-400 font-mono font-bold block mt-0.5">
+                              ${(lead.estimated_value || 0).toLocaleString()}
+                            </span>
                           </div>
-                        );
-                      })
-                    )}
+                          <button onClick={() => setEditingLead(lead)} className="p-1.5 text-slate-400 hover:text-white bg-slate-800 rounded-lg">
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        <div className="space-y-1 text-xs text-slate-400">
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                            <span className="truncate">{lead.email}</span>
+                          </div>
+                          {lead.phone && (
+                            <a href={`tel:${lead.phone}`} className="flex items-center gap-2 text-emerald-400 font-mono hover:underline">
+                              <PhoneCall className="w-3.5 h-3.5" />
+                              <span>{lead.phone}</span>
+                            </a>
+                          )}
+                        </div>
+
+                        <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                          {getPillarBadge(lead.entity_pillar)}
+                          <select
+                            value={getNormalizedStage(lead.stage)}
+                            onChange={(e) => handleStageChange(lead.id, e.target.value)}
+                            className="bg-slate-950 border border-slate-800 text-[11px] text-slate-300 font-semibold rounded-lg px-2 py-1 focus:outline-none"
+                          >
+                            <option value="new">New</option>
+                            <option value="nurture">Nurture</option>
+                            <option value="meeting">Meeting</option>
+                            <option value="converted">Won</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               );
@@ -499,22 +870,20 @@ export default function PortalDashboard() {
           </div>
         )}
 
-        {/* TAB 2: ANALYTICS & KPIS */}
+        {/* TAB 3: ANALYTICS */}
         {activeTab === 'analytics' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Pillar Breakdown Card */}
             <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
               <h3 className="font-bold text-lg text-white flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-blue-400" />
-                <span>Pillar Market Distribution</span>
+                <span>Pillar Market Share</span>
               </h3>
 
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-xs font-semibold mb-1">
                     <span className="text-emerald-400">Financial (WFG)</span>
-                    <span className="text-slate-400">{financialCount} leads ({totalLeads > 0 ? Math.round((financialCount / totalLeads) * 100) : 0}%)</span>
+                    <span className="text-slate-400">{financialCount} leads</span>
                   </div>
                   <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
                     <div className="bg-emerald-500 h-full rounded-full" style={{ width: `${totalLeads > 0 ? (financialCount / totalLeads) * 100 : 0}%` }} />
@@ -524,7 +893,7 @@ export default function PortalDashboard() {
                 <div>
                   <div className="flex justify-between text-xs font-semibold mb-1">
                     <span className="text-purple-400">Speaking & Keynotes</span>
-                    <span className="text-slate-400">{speakingCount} leads ({totalLeads > 0 ? Math.round((speakingCount / totalLeads) * 100) : 0}%)</span>
+                    <span className="text-slate-400">{speakingCount} leads</span>
                   </div>
                   <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
                     <div className="bg-purple-500 h-full rounded-full" style={{ width: `${totalLeads > 0 ? (speakingCount / totalLeads) * 100 : 0}%` }} />
@@ -534,7 +903,7 @@ export default function PortalDashboard() {
                 <div>
                   <div className="flex justify-between text-xs font-semibold mb-1">
                     <span className="text-amber-400">Charity & Foundations</span>
-                    <span className="text-slate-400">{charityCount} leads ({totalLeads > 0 ? Math.round((charityCount / totalLeads) * 100) : 0}%)</span>
+                    <span className="text-slate-400">{charityCount} leads</span>
                   </div>
                   <div className="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800">
                     <div className="bg-amber-500 h-full rounded-full" style={{ width: `${totalLeads > 0 ? (charityCount / totalLeads) * 100 : 0}%` }} />
@@ -543,11 +912,10 @@ export default function PortalDashboard() {
               </div>
             </div>
 
-            {/* Funnel Conversion Analytics */}
             <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
               <h3 className="font-bold text-lg text-white flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-emerald-400" />
-                <span>Stage Conversion Funnel</span>
+                <span>Conversion Funnel Breakdown</span>
               </h3>
 
               <div className="space-y-4">
@@ -556,13 +924,13 @@ export default function PortalDashboard() {
                   const pct = totalLeads > 0 ? Math.round((count / totalLeads) * 100) : 0;
 
                   return (
-                    <div key={stage.id} className="flex items-center justify-between p-3 bg-slate-950 rounded-xl border border-slate-800">
+                    <div key={stage.id} className="flex items-center justify-between p-3.5 bg-slate-950 rounded-xl border border-slate-800">
                       <div className="flex items-center gap-3">
                         <stage.icon className="w-4 h-4 text-slate-400" />
                         <span className="text-xs font-semibold text-white">{stage.label}</span>
                       </div>
                       <div className="flex items-center gap-4">
-                        <span className="text-xs text-slate-400 font-mono">{count} leads</span>
+                        <span className="text-xs text-slate-400 font-mono">{count} records</span>
                         <span className="text-xs font-bold text-blue-400 w-12 text-right">{pct}%</span>
                       </div>
                     </div>
@@ -570,96 +938,178 @@ export default function PortalDashboard() {
                 })}
               </div>
             </div>
-
-          </div>
-        )}
-
-        {/* TAB 3: MASTER DIRECTORY TABLE */}
-        {activeTab === 'directory' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-800 bg-slate-950 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                    <th className="py-4 px-6">Contact Info</th>
-                    <th className="py-4 px-6">Phone (Quick Call)</th>
-                    <th className="py-4 px-6">Pillar</th>
-                    <th className="py-4 px-6">Sub-Track</th>
-                    <th className="py-4 px-6">Funnel Stage</th>
-                    <th className="py-4 px-6 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 text-xs">
-                  {filteredLeads.map((lead) => {
-                    const displayName = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.name || 'Unnamed';
-
-                    return (
-                      <tr key={lead.id} className="hover:bg-slate-800/40 transition">
-                        <td className="py-4 px-6">
-                          <div className="font-bold text-white text-sm">{displayName}</div>
-                          <div className="text-slate-400">{lead.email}</div>
-                        </td>
-                        <td className="py-4 px-6 font-mono text-slate-300">
-                          {lead.phone ? (
-                            <a href={`tel:${lead.phone}`} className="hover:text-emerald-400 inline-flex items-center gap-1.5">
-                              <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
-                              <span>{lead.phone}</span>
-                            </a>
-                          ) : (
-                            <span className="text-slate-600">—</span>
-                          )}
-                        </td>
-                        <td className="py-4 px-6">{getPillarBadge(lead.entity_pillar)}</td>
-                        <td className="py-4 px-6 text-slate-400">{lead.sub_track || '—'}</td>
-                        <td className="py-4 px-6">
-                          <select
-                            value={getNormalizedStage(lead.stage)}
-                            onChange={(e) => handleStageChange(lead.id, e.target.value)}
-                            className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                          >
-                            <option value="new">New Opportunity</option>
-                            <option value="nurture">In Nurture</option>
-                            <option value="meeting">Meeting Scheduled</option>
-                            <option value="converted">Converted / Client</option>
-                          </select>
-                        </td>
-                        <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => downloadVCard(lead)}
-                              className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white rounded-lg"
-                              title="Export vCard to Mobile Phone"
-                            >
-                              <Download className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={() => setEditingLead(lead)}
-                              className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white rounded-lg"
-                              title="Edit Lead"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
           </div>
         )}
 
       </div>
 
-      {/* LEAD EDIT MODAL */}
+      {/* CREATE NEW LEAD MODAL */}
+      {isAddModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Plus className="w-5 h-5 text-blue-400" />
+                <span>Add Opportunity to Pipeline</span>
+              </h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateLead} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">First Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={newLead.first_name}
+                    onChange={(e) => setNewLead({ ...newLead, first_name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">Last Name</label>
+                  <input
+                    type="text"
+                    value={newLead.last_name}
+                    onChange={(e) => setNewLead({ ...newLead, last_name: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-400 uppercase font-semibold mb-1">Email Address</label>
+                <input
+                  type="email"
+                  required
+                  value={newLead.email}
+                  onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    value={newLead.phone}
+                    onChange={(e) => setNewLead({ ...newLead, phone: e.target.value })}
+                    placeholder="+1 (555) 000-0000"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">Est. Value ($)</label>
+                  <input
+                    type="number"
+                    value={newLead.estimated_value}
+                    onChange={(e) => setNewLead({ ...newLead, estimated_value: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">Entity Pillar</label>
+                  <select
+                    value={newLead.entity_pillar}
+                    onChange={(e) => setNewLead({ ...newLead, entity_pillar: e.target.value as any })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="financial">Financial (WFG)</option>
+                    <option value="speaking">Speaking</option>
+                    <option value="charity">Charity</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">Sub-Track</label>
+                  <input
+                    type="text"
+                    value={newLead.sub_track}
+                    onChange={(e) => setNewLead({ ...newLead, sub_track: e.target.value })}
+                    placeholder="e.g. recruiting"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 rounded-xl font-semibold">
+                  Cancel
+                </button>
+                <button type="submit" disabled={isSaving} className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl flex items-center gap-2">
+                  {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  <span>Create Lead</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* CSV IMPORT MODAL */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Upload className="w-5 h-5 text-blue-400" />
+                <span>Import CSV Spreadsheet</span>
+              </h3>
+              <button onClick={() => setIsImportModalOpen(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-400">
+              Upload a `.csv` file containing lead records. Columns mapped in order: <br />
+              <code className="text-blue-400 bg-slate-950 px-1 py-0.5 rounded mt-1 inline-block">
+                First Name, Last Name, Email, Phone, Pillar, Sub-track, Stage, Value
+              </code>
+            </p>
+
+            <div className="p-6 border-2 border-dashed border-slate-800 hover:border-blue-500/50 rounded-xl text-center cursor-pointer transition" onClick={() => fileInputRef.current?.click()}>
+              <FileSpreadsheet className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+              <span className="text-xs font-semibold text-slate-300 block">Click to select CSV file</span>
+              <span className="text-[10px] text-slate-500">Supports standard CSV exports from Excel or Sheets</span>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </div>
+
+            {importStatus && (
+              <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-blue-400 flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                <span>{importStatus}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <button onClick={() => setIsImportModalOpen(false)} className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 rounded-xl text-xs font-semibold">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EDIT LEAD MODAL */}
       {editingLead && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-6">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 shadow-2xl relative space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
                 <Edit3 className="w-5 h-5 text-blue-400" />
-                <span>Edit Contact Record</span>
+                <span>Edit Lead Record</span>
               </h3>
               <button onClick={() => setEditingLead(null)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
@@ -674,7 +1124,7 @@ export default function PortalDashboard() {
                     type="text"
                     value={editingLead.first_name || ''}
                     onChange={(e) => setEditingLead({ ...editingLead, first_name: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                   />
                 </div>
                 <div>
@@ -683,7 +1133,7 @@ export default function PortalDashboard() {
                     type="text"
                     value={editingLead.last_name || ''}
                     onChange={(e) => setEditingLead({ ...editingLead, last_name: e.target.value })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                   />
                 </div>
               </div>
@@ -695,19 +1145,29 @@ export default function PortalDashboard() {
                   required
                   value={editingLead.email}
                   onChange={(e) => setEditingLead({ ...editingLead, email: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-400 uppercase font-semibold mb-1">Phone Number</label>
-                <input
-                  type="text"
-                  value={editingLead.phone || ''}
-                  onChange={(e) => setEditingLead({ ...editingLead, phone: e.target.value })}
-                  placeholder="+1 (555) 000-0000"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">Phone Number</label>
+                  <input
+                    type="text"
+                    value={editingLead.phone || ''}
+                    onChange={(e) => setEditingLead({ ...editingLead, phone: e.target.value })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 uppercase font-semibold mb-1">Est. Value ($)</label>
+                  <input
+                    type="number"
+                    value={editingLead.estimated_value || 0}
+                    onChange={(e) => setEditingLead({ ...editingLead, estimated_value: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white font-mono"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -716,7 +1176,7 @@ export default function PortalDashboard() {
                   <select
                     value={editingLead.entity_pillar}
                     onChange={(e) => setEditingLead({ ...editingLead, entity_pillar: e.target.value as any })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                   >
                     <option value="financial">Financial (WFG)</option>
                     <option value="speaking">Speaking</option>
@@ -729,8 +1189,7 @@ export default function PortalDashboard() {
                     type="text"
                     value={editingLead.sub_track || ''}
                     onChange={(e) => setEditingLead({ ...editingLead, sub_track: e.target.value })}
-                    placeholder="e.g. recruiting / keynote"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                   />
                 </div>
               </div>
@@ -741,24 +1200,15 @@ export default function PortalDashboard() {
                   rows={3}
                   value={editingLead.notes || ''}
                   onChange={(e) => setEditingLead({ ...editingLead, notes: e.target.value })}
-                  placeholder="Interaction history or follow-up reminders..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white"
                 />
               </div>
 
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setEditingLead(null)}
-                  className="px-4 py-2 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-300 rounded-xl font-semibold"
-                >
+                <button type="button" onClick={() => setEditingLead(null)} className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 rounded-xl font-semibold">
                   Cancel
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSaving}
-                  className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-blue-600/20"
-                >
+                <button type="submit" disabled={isSaving} className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl flex items-center gap-2">
                   {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
                   <span>Save Changes</span>
                 </button>
