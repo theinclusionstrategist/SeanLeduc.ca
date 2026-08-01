@@ -19,6 +19,8 @@ export interface Contact {
   link?: string;
   Link?: string;
   Doc?: string;
+  notes?: string;
+  Notes?: string;
   created_at?: string;
   Updated?: string;
   'last contact'?: string;
