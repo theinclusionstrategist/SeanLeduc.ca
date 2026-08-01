@@ -91,3 +91,11 @@ export async function updateContactStage(
     return { success: false, error: msg };
   }
 }
+
+// Wrapper export expected by KanbanPipeline component
+export async function moveContactStage(
+  contactId: string | number,
+  newStage: string
+): Promise<{ success: boolean; error?: string }> {
+  return updateContactStage(contactId, newStage);
+}
