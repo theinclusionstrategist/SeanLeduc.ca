@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // REMOVE basePath if using a subdomain like agentportal.seanleduc.ca
+  reactStrictMode: true,
   async redirects() {
     return [
       {
