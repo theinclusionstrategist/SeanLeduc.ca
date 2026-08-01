@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
-// Helper to check admin passcode
+// Helper to verify admin passcode
 function verifyPasscode(req: NextRequest, passcodeParam: string | null): boolean {
   const headerCode = req.headers.get('x-admin-passcode');
   const code = headerCode || passcodeParam;
@@ -71,5 +71,4 @@ export async function PATCH(req: NextRequest) {
     const msg = err instanceof Error ? err.message : 'Failed to update lead';
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
 }
