@@ -25,7 +25,11 @@ export default function InclusyWidget() {
   useEffect(() => {
     let existingSession = localStorage.getItem('inclusy_session_id');
     if (!existingSession) {
-      existingSession = 'session-' + Math.random().toString(36).substring(2, 11) + '-' + Date.now();
+      existingSession =
+        'session-' +
+        Math.random().toString(36).substring(2, 11) +
+        '-' +
+        Date.now();
       localStorage.setItem('inclusy_session_id', existingSession);
     }
     setSessionId(existingSession);
@@ -64,7 +68,7 @@ export default function InclusyWidget() {
       }
 
       const data = await response.json();
-      
+
       setMessages((prev) => [
         ...prev,
         { role: 'assistant', content: data.reply },
@@ -75,7 +79,8 @@ export default function InclusyWidget() {
         ...prev,
         {
           role: 'assistant',
-          content: "I'm currently unable to connect to the network. Please reach out to Sean directly via email or call.",
+          content:
+            "I'm currently unable to connect to the network. Please reach out to Sean directly via email or call.",
         },
       ]);
     } finally {
@@ -84,9 +89,9 @@ export default function InclusyWidget() {
   };
 
   const quickPrompts = [
-    "Financial & Insurance Advisory",
-    "Book Sean for Keynote Speaking",
-    "U.N.I.T.E. Charity Initiatives",
+    'Financial & Insurance Advisory',
+    'Book Sean for Keynote Speaking',
+    'U.N.I.T.E. Charity Initiatives',
   ];
 
   return (
@@ -99,8 +104,18 @@ export default function InclusyWidget() {
           aria-label="Open Inclusy AI Concierge"
         >
           <div className="relative">
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+            <svg
+              className="w-6 h-6"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+                d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
+              />
             </svg>
             <span className="absolute -top-1 -right-1 flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -114,7 +129,6 @@ export default function InclusyWidget() {
       {/* Main Chat Modal Container */}
       {isOpen && (
         <div className="w-[92vw] sm:w-[420px] h-[580px] max-h-[85vh] bg-slate-900/95 border border-slate-700/80 rounded-2xl shadow-2xl flex flex-col overflow-hidden backdrop-blur-xl transition-all">
-          
           {/* Header */}
           <div className="bg-slate-800/90 border-b border-slate-700/60 p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -122,8 +136,12 @@ export default function InclusyWidget() {
                 ⚡
               </div>
               <div>
-                <h3 className="font-bold text-white text-base leading-tight">Inclusy AI</h3>
-                <p className="text-xs text-blue-400 font-medium">Sean Leduc's Concierge</p>
+                <h3 className="font-bold text-white text-base leading-tight">
+                  Inclusy AI
+                </h3>
+                <p className="text-xs text-blue-400 font-medium">
+                  Sean Leduc's Concierge
+                </p>
               </div>
             </div>
             <button
@@ -131,8 +149,18 @@ export default function InclusyWidget() {
               className="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-700/50 transition-colors"
               aria-label="Close Chat"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -156,7 +184,9 @@ export default function InclusyWidget() {
             {messages.map((msg, index) => (
               <div
                 key={index}
-                className={`flex gap-2.5 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex gap-2.5 ${
+                  msg.role === 'user' ? 'justify-end' : 'justify-start'
+                }`}
               >
                 {msg.role === 'assistant' && (
                   <div className="w-7 h-7 rounded-full bg-blue-600/30 border border-blue-500/40 flex items-center justify-center text-blue-300 text-xs flex-shrink-0 mt-0.5">
@@ -214,13 +244,22 @@ export default function InclusyWidget() {
                 className="bg-blue-600 hover:bg-blue-500 text-white p-2.5 rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed flex-shrink-0"
                 aria-label="Send message"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"
+                  />
                 </svg>
               </button>
             </form>
           </div>
-
         </div>
       )}
     </div>
