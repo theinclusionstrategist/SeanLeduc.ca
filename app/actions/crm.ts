@@ -69,13 +69,16 @@ export async function updateContactStage(
     const isNumericId = typeof contactId === 'number' || !isNaN(Number(contactId));
     const nowIso = new Date().toISOString();
 
-    // 1. Fetch current lead data before update to identify owner & old stage
-    let fetchQuery = supabase.from('contacts').select('name, stage, agent').single();
-    fetchQuery = isNumericId
-      ? fetchQuery.eq('id', Number(contactId))
-      : fetchQuery.eq('ID', contactId);
+    // 1. Build fetch query and apply filters BEFORE calling .maybeSingle()
+    let fetchQuery = supabase.from('contacts').select('name, stage, agent');
 
-    const { data: currentContact } = await fetchQuery;
+    if (isNumericId) {
+      fetchQuery = fetchQuery.eq('id', Number(contactId));
+    } else {
+      fetchQuery = fetchQuery.eq('ID', String(contactId));
+    }
+
+    const { data: currentContact } = await fetchQuery.maybeSingle();
 
     // 2. Perform Update
     let updateQuery = supabase.from('contacts').update({
@@ -84,9 +87,11 @@ export async function updateContactStage(
       Updated: nowIso,
     });
 
-    updateQuery = isNumericId
-      ? updateQuery.eq('id', Number(contactId))
-      : updateQuery.eq('ID', contactId);
+    if (isNumericId) {
+      updateQuery = updateQuery.eq('id', Number(contactId));
+    } else {
+      updateQuery = updateQuery.eq('ID', String(contactId));
+    }
 
     const { error } = await updateQuery;
     if (error) throw new Error(error.message);
