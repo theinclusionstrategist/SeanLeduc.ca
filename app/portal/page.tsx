@@ -9,18 +9,18 @@ const supabase = createClient(
 );
 
 interface Contact {
-  id: string;
-  name: string;
-  phone: string;
-  email: string;
-  type: 'Recruit' | 'Client' | 'Potential Referral Partner';
-  stage: string;
-  market_source: string;
-  agent_name: string;
-  priority: 'SUPER HOT' | 'Hot' | 'Warm' | 'Luke Warm' | 'Cold';
-  nba: string;
-  google_doc_link: string;
-  notes: string;
+  ID: string;
+  Name: string;
+  Type: 'Recruit' | 'Client' | 'Potential Referral Partner';
+  Stage: string;
+  '````````': string; // Phone
+  Email: string;
+  Market: string;
+  Agent: string;
+  Priority: 'SUPER HOT' | 'Hot' | 'Warm' | 'Luke Warm' | 'Cold';
+  NBA: string;
+  Link: string;
+  Notes: string;
 }
 
 const RECRUIT_STAGES = [
@@ -63,27 +63,27 @@ export default function CRMPortal() {
 
   async function fetchContacts() {
     setLoading(true);
-    let query = supabase.from('contacts').select('*').eq('type', activeTrack);
+    let query = supabase.from('contacts').select('*').eq('Type', activeTrack);
 
     if (selectedAgent !== 'ALL') {
-      query = query.eq('agent_name', selectedAgent);
+      query = query.eq('Agent', selectedAgent);
     }
 
-    const { data } = await query.order('created_at', { ascending: false });
+    const { data } = await query;
     if (data) setContacts(data as Contact[]);
     setLoading(false);
   }
 
   async function updateStage(id: string, newStage: string) {
-    await supabase.from('contacts').update({ stage: newStage }).eq('id', id);
-    setContacts(contacts.map((c) => (c.id === id ? { ...c, stage: newStage } : c)));
+    await supabase.from('contacts').update({ Stage: newStage }).eq('ID', id);
+    setContacts(contacts.map((c) => (c.ID === id ? { ...c, Stage: newStage } : c)));
   }
 
   const filteredContacts = contacts.filter(
     (c) =>
-      c.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone?.includes(searchQuery) ||
-      c.email?.toLowerCase().includes(searchQuery.toLowerCase())
+      c.Name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c['````````']?.includes(searchQuery) ||
+      c.Email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const priorityColor = (priority: string) => {
@@ -98,7 +98,7 @@ export default function CRMPortal() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 space-y-6">
-      {/* Top Header & Track Selector */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-900 p-6 rounded-xl border border-slate-800">
         <div>
           <h1 className="text-2xl font-black text-white tracking-wide">
@@ -134,7 +134,7 @@ export default function CRMPortal() {
         </div>
       </div>
 
-      {/* Filter Controls */}
+      {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-4 justify-between items-center bg-slate-900/60 p-4 rounded-xl border border-slate-800">
         <input
           type="text"
@@ -144,7 +144,6 @@ export default function CRMPortal() {
           className="bg-slate-950 border border-slate-700 rounded-lg px-4 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-80"
         />
 
-        {/* Agent Filter */}
         <div className="flex items-center gap-3">
           <span className="text-xs text-slate-400 font-semibold uppercase">Agent:</span>
           {['ALL', 'Sean', 'Shaun'].map((agent) => (
@@ -163,7 +162,7 @@ export default function CRMPortal() {
         </div>
       </div>
 
-      {/* Contacts Data Grid */}
+      {/* Contacts Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-2xl">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
@@ -182,40 +181,40 @@ export default function CRMPortal() {
               {loading ? (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-slate-500">
-                    Loading CRM database records...
+                    Loading CRM contacts...
                   </td>
                 </tr>
               ) : filteredContacts.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="p-8 text-center text-slate-500">
-                    No contacts found for this selection.
+                    No contacts found for this view.
                   </td>
                 </tr>
               ) : (
                 filteredContacts.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-800/40 transition-colors">
+                  <tr key={c.ID} className="hover:bg-slate-800/40 transition-colors">
                     <td className="p-4">
-                      <div className="font-bold text-white">{c.name}</div>
+                      <div className="font-bold text-white">{c.Name}</div>
                       <div className="text-xs text-slate-400 flex gap-2">
-                        <span>{c.phone || 'No phone'}</span>
-                        {c.email && <span>• {c.email}</span>}
+                        <span>{c['````````'] || 'No phone'}</span>
+                        {c.Email && <span>• {c.Email}</span>}
                       </div>
                     </td>
                     <td className="p-4">
-                      <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-wide ${priorityColor(c.priority)}`}>
-                        {c.priority || 'Warm'}
+                      <span className={`px-2.5 py-1 rounded-md text-[10px] uppercase tracking-wide ${priorityColor(c.Priority)}`}>
+                        {c.Priority || 'Warm'}
                       </span>
                     </td>
                     <td className="p-4 text-slate-300 text-xs">
-                      {c.market_source || 'Cold Market'}
+                      {c.Market || 'Cold Market'}
                     </td>
                     <td className="p-4 font-semibold text-blue-400 text-xs">
-                      {c.agent_name || 'Sean'}
+                      {c.Agent || 'Sean'}
                     </td>
                     <td className="p-4">
                       <select
-                        value={c.stage}
-                        onChange={(e) => updateStage(c.id, e.target.value)}
+                        value={c.Stage}
+                        onChange={(e) => updateStage(c.ID, e.target.value)}
                         className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
                       >
                         {(activeTrack === 'Recruit' ? RECRUIT_STAGES : CLIENT_STAGES).map((stg) => (
@@ -226,12 +225,12 @@ export default function CRMPortal() {
                       </select>
                     </td>
                     <td className="p-4 text-xs font-medium text-emerald-400">
-                      {c.nba || '—'}
+                      {c.NBA || '—'}
                     </td>
                     <td className="p-4 text-right">
-                      {c.google_doc_link ? (
+                      {c.Link ? (
                         <a
-                          href={c.google_doc_link}
+                          href={c.Link}
                           target="_blank"
                           rel="noreferrer"
                           className="bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded text-xs font-semibold border border-slate-700 inline-block"
