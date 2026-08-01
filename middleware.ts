@@ -42,7 +42,6 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  // Refresh authentication session if active
   await supabase.auth.getUser();
 
   return supabaseResponse;
@@ -50,9 +49,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except for static files, images, and favicon
-     */
     '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
