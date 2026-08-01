@@ -2,6 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { dispatchNewPublicLeadAlert } from '@/lib/notifications';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey =
@@ -20,7 +21,6 @@ export interface EnrichmentResult {
 
 export async function enrichAndRouteLead(sessionId: string): Promise<EnrichmentResult | null> {
   try {
-    // 1. Query Lead Data and Telemetry History
     const { data: lead } = await supabase
       .from('leads')
       .select('*')
@@ -29,14 +29,12 @@ export async function enrichAndRouteLead(sessionId: string): Promise<EnrichmentR
 
     if (!lead) throw new Error('Lead not found for session');
 
-    // 2. Fetch telemetry
     const { data: telemetry } = await supabase
       .from('lead_telemetry')
       .select('*')
       .eq('session_id', sessionId)
       .maybeSingle();
 
-    // 3. AI Analysis with Gemini 1.5 Flash
     if (!apiKey) throw new Error('Gemini API key missing');
 
     const genAI = new GoogleGenerativeAI(apiKey);
@@ -44,7 +42,7 @@ export async function enrichAndRouteLead(sessionId: string): Promise<EnrichmentR
 
     const prompt = `
 You are the Enterprise AI Deal Officer for Sean Leduc & Associates.
-Analyze this inbound lead and behavioral telemetry:
+Analyze this inbound lead:
 
 LEAD PROFILE:
 - Name: ${lead.name || 'Unknown'}
@@ -56,20 +54,15 @@ LEAD PROFILE:
 BEHAVIORAL TELEMETRY:
 - Scroll Depth: ${telemetry?.scroll_depth || 0}%
 - Time Spent: ${telemetry?.time_on_page || 0} seconds
-- Sections View Views: ${JSON.stringify(telemetry?.sections || [])}
-
-ASSIGNMENT RULES:
-- If Corporate, Keyperson, Buy-Sell, or Speaking: Assign to "Sean".
-- If Personal Advisory, TFSA, RRSP, or standard insurance: Round-robin / Assign to "Shaun".
 
 TASK:
 Return a strictly formatted JSON object:
 {
   "leadTier": "S-Tier Corporate" | "A-Tier High Priority" | "B-Tier Advisory" | "C-Tier Nurture",
   "estimatedDealValue": "$10,000 - $50,000 Potential Commission",
-  "assignedAgent": "Sean" | "Shaun",
+  "assignedAgent": "Sean",
   "personaSummary": "2-sentence persona breakdown based on intent tags and scroll depth",
-  "draftedOutreachEmail": "A highly personalized 3-paragraph outreach email written from the assigned agent to the lead."
+  "draftedOutreachEmail": "A highly personalized 3-paragraph outreach email written from Sean to the lead."
 }
 `;
 
@@ -78,17 +71,28 @@ Return a strictly formatted JSON object:
     const cleanJson = text.replace(/```json/g, '').replace(/```/g, '').trim();
     const enrichedData = JSON.parse(cleanJson) as EnrichmentResult;
 
-    // 4. Update Supabase Lead record with AI Insights & Agent Assignment
+    // Save lead details
     await supabase
       .from('leads')
       .update({
-        agent: enrichedData.assignedAgent,
+        agent: 'Sean', // Inbound client leads owned by Sean
         priority: enrichedData.leadTier,
         nba: enrichedData.personaSummary,
-        notes: `${lead.notes || ''}\n\n--- AI ENRICHMENT ANALYSIS ---\nDeal Value: ${enrichedData.estimatedDealValue}\nDraft Email:\n${enrichedData.draftedOutreachEmail}`,
+        notes: `${lead.notes || ''}\n\n--- AI ENRICHMENT ---\nDeal Value: ${enrichedData.estimatedDealValue}\nDraft Email:\n${enrichedData.draftedOutreachEmail}`,
         Updated: new Date().toISOString(),
       })
       .eq('session_id', sessionId);
+
+    // Send instant Email + SMS alert EXCLUSIVELY to Sean
+    await dispatchNewPublicLeadAlert({
+      name: lead.name || 'Anonymous Prospect',
+      email: lead.email || 'No email provided',
+      phone: lead.phone || undefined,
+      tier: enrichedData.leadTier,
+      dealValue: enrichedData.estimatedDealValue,
+      pillar: lead.intent_tags?.[0] || 'General Strategy',
+      summary: enrichedData.personaSummary,
+    });
 
     return enrichedData;
   } catch (err: unknown) {
