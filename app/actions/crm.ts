@@ -84,10 +84,12 @@ export async function updateContactStage(
   newStage: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const isNumericId = typeof contactId === 'number' || (!isNaN(Number(contactId)) && !isNaN(parseFloat(String(contactId))));
+    const isNumericId =
+      typeof contactId === 'number' ||
+      (!isNaN(Number(contactId)) && !isNaN(parseFloat(String(contactId))));
     const nowIso = new Date().toISOString();
 
-    // Direct inline execution completely avoids Supabase Builder re-assignment typing bugs
+    // Direct inline queries avoid variable reassignment typing issues in Supabase
     const { data: currentContact } = isNumericId
       ? await supabase
           .from('contacts')
@@ -144,7 +146,9 @@ export async function toggleNurtureSequence(
   active: boolean
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const isNumericId = typeof contactId === 'number' || (!isNaN(Number(contactId)) && !isNaN(parseFloat(String(contactId))));
+    const isNumericId =
+      typeof contactId === 'number' ||
+      (!isNaN(Number(contactId)) && !isNaN(parseFloat(String(contactId))));
     const nextDate = active ? new Date().toISOString() : null;
 
     const updateRes = isNumericId
