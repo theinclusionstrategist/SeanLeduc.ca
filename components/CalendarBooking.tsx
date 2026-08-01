@@ -44,14 +44,20 @@ export default function CalendarBooking() {
     });
 
     if (res.success) {
-      setStatus({ success: true, message: res.message });
+      setStatus({
+        success: true,
+        message: res.message || 'Consultation successfully booked! Check your email for confirmation.',
+      });
       setName('');
       setEmail('');
       setPhone('');
       setSelectedDate('');
       setSelectedTime('');
     } else {
-      setStatus({ success: false, message: res.error || 'Failed to complete booking.' });
+      setStatus({
+        success: false,
+        message: res.error || 'Failed to complete booking. Please try again.',
+      });
     }
 
     setIsSubmitting(false);
