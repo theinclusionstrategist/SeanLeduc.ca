@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import {
@@ -14,7 +14,6 @@ import {
   AlertCircle,
   Loader2,
   File,
-  ArrowRight,
   Briefcase,
   Mic,
   Heart
@@ -36,7 +35,7 @@ const DOCUMENT_CATEGORIES = [
   { id: 'general', label: 'Other / General Documentation', icon: FileText },
 ];
 
-export default function SecureDocumentSubmit() {
+function DocumentSubmitContent() {
   const searchParams = useSearchParams();
   const leadId = searchParams.get('lead_id') || searchParams.get('id');
   const clientEmailParam = searchParams.get('email');
@@ -52,7 +51,6 @@ export default function SecureDocumentSubmit() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const supabase = createClientComponentClient();
 
-  // Drag and Drop Handlers
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
@@ -91,7 +89,6 @@ export default function SecureDocumentSubmit() {
     setStagedFiles((prev) => prev.filter((f) => f.id !== id));
   };
 
-  // Upload Logic
   const handleUploadAll = async () => {
     if (!email) {
       setErrorMessage('Please enter your email address so we can associate your documents.');
@@ -103,7 +100,6 @@ export default function SecureDocumentSubmit() {
     setErrorMessage(null);
 
     try {
-      // 1. Resolve Lead ID if missing
       let activeLeadId = leadId;
       if (!activeLeadId) {
         const { data: leadData } = await supabase
@@ -117,11 +113,9 @@ export default function SecureDocumentSubmit() {
         }
       }
 
-      // 2. Loop through staged files and upload to Supabase Storage
       for (let i = 0; i < stagedFiles.length; i++) {
         const item = stagedFiles[i];
 
-        // Update status to uploading
         setStagedFiles((prev) =>
           prev.map((f) => (f.id === item.id ? { ...f, status: 'uploading', progress: 30 } : f))
         );
@@ -130,7 +124,6 @@ export default function SecureDocumentSubmit() {
         const cleanFileName = `${Date.now()}_${item.file.name.replace(/[^a-zA-Z0-9.]/g, '_')}`;
         const filePath = `${activeLeadId || 'unassigned'}/${cleanFileName}`;
 
-        // Upload to 'client-vault' bucket
         const { error: uploadError } = await supabase.storage
           .from('client-vault')
           .upload(filePath, item.file, {
@@ -139,11 +132,9 @@ export default function SecureDocumentSubmit() {
           });
 
         if (uploadError) {
-          // Fallback if bucket doesn't exist yet: log record directly
           console.warn('Storage bucket warning:', uploadError.message);
         }
 
-        // 3. Record in Database
         await supabase.from('client_documents').insert([
           {
             lead_id: activeLeadId || null,
@@ -155,7 +146,6 @@ export default function SecureDocumentSubmit() {
           },
         ]);
 
-        // Mark completed
         setStagedFiles((prev) =>
           prev.map((f) => (f.id === item.id ? { ...f, status: 'completed', progress: 100 } : f))
         );
@@ -171,12 +161,193 @@ export default function SecureDocumentSubmit() {
   };
 
   return (
+    <main className="max-w-3xl mx-auto px-4 sm:px-6 py-10 flex-1 w-full space-y-8 z-10">
+      {isSuccess ? (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-10 shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
+          <div className="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/20">
+            <CheckCircle2 className="w-10 h-10" />
+          </div>
+          
+          <div className="space-y-2">
+            <h2 className="text-3xl font-extrabold text-white">Documents Received Securely</h2>
+            <p className="text-slate-400 text-sm max-w-md mx-auto">
+              Your files have been encrypted and delivered directly to Sean Leduc's command portal.
+            </p>
+          </div>
+
+          <div className="pt-4">
+            <button
+              onClick={() => {
+                setIsSuccess(false);
+                setStagedFiles([]);
+              }}
+              className="px-6 py-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-white font-bold rounded-xl text-xs transition"
+            >
+              Submit Additional Documents
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-8 backdrop-blur-xl">
+          <div className="border-b border-slate-800/80 pb-6">
+            <h2 className="text-2xl font-extrabold text-white tracking-tight">Upload Required Documentation</h2>
+            <p className="text-xs text-slate-400 mt-1">
+              Bypass email attachment limits. Select a category, add your files, and transmit securely.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-2">
+              Your Email Address <span className="text-blue-400">*</span>
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-2">
+              Document Category
+            </label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              {DOCUMENT_CATEGORIES.map((cat) => {
+                const Icon = cat.icon;
+                const isSelected = selectedCategory === cat.id;
+
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
+                      isSelected
+                        ? 'bg-blue-600/10 border-blue-500 text-white font-bold'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-400' : 'text-slate-500'}`} />
+                    <span className="text-xs">{cat.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            className={`p-8 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
+              isDragging
+                ? 'border-blue-500 bg-blue-500/10 scale-[0.99]'
+                : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'
+            }`}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+              <Upload className="w-6 h-6" />
+            </div>
+            <h3 className="text-sm font-bold text-white">Click or Drag & Drop files here</h3>
+            <p className="text-xs text-slate-500 mt-1">Supports PDF, PNG, JPG, DOCX, XLSX up to 50MB</p>
+          </div>
+
+          {errorMessage && (
+            <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {stagedFiles.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
+                Selected Files ({stagedFiles.length})
+              </h4>
+              <div className="space-y-2">
+                {stagedFiles.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3 text-xs"
+                  >
+                    <div className="flex items-center gap-3 overflow-hidden">
+                      <File className="w-4 h-4 text-blue-400 shrink-0" />
+                      <div className="truncate">
+                        <p className="font-bold text-white truncate">{item.file.name}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">
+                          {(item.file.size / (1024 * 1024)).toFixed(2)} MB • {item.category}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 shrink-0">
+                      {item.status === 'uploading' && (
+                        <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+                      )}
+                      {item.status === 'completed' && (
+                        <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      )}
+                      {item.status === 'pending' && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeFile(item.id);
+                          }}
+                          className="p-1 text-slate-500 hover:text-white"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="pt-4">
+            <button
+              type="button"
+              disabled={stagedFiles.length === 0 || isSubmitting}
+              onClick={handleUploadAll}
+              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold rounded-2xl shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Encrypting & Uploading...</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4" />
+                  <span>Transmit Documents Securely</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+export default function SecureDocumentSubmit() {
+  return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col justify-between antialiased selection:bg-blue-600 selection:text-white relative overflow-hidden">
-      
-      {/* Background Lighting Effects */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[500px] bg-gradient-to-b from-blue-600/10 via-indigo-600/5 to-transparent rounded-full blur-[140px] pointer-events-none" />
 
-      {/* HEADER */}
       <header className="sticky top-0 z-40 bg-slate-900/80 backdrop-blur-xl border-b border-slate-800">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -196,201 +367,14 @@ export default function SecureDocumentSubmit() {
         </div>
       </header>
 
-      {/* MAIN CONTAINER */}
-      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-10 flex-1 w-full space-y-8 z-10">
-        
-        {isSuccess ? (
-          /* SUCCESS SCREEN */
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-10 shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-500">
-            <div className="w-20 h-20 bg-emerald-500/20 text-emerald-400 rounded-full flex items-center justify-center mx-auto shadow-xl shadow-emerald-500/20">
-              <CheckCircle2 className="w-10 h-10" />
-            </div>
-            
-            <div className="space-y-2">
-              <h2 className="text-3xl font-extrabold text-white">Documents Received Securely</h2>
-              <p className="text-slate-400 text-sm max-w-md mx-auto">
-                Your files have been encrypted and delivered directly to Sean Leduc's command portal. You do not need to take any further action.
-              </p>
-            </div>
+      <Suspense fallback={
+        <div className="flex-1 flex items-center justify-center py-20">
+          <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        </div>
+      }>
+        <DocumentSubmitContent />
+      </Suspense>
 
-            <div className="pt-4">
-              <button
-                onClick={() => {
-                  setIsSuccess(false);
-                  setStagedFiles([]);
-                }}
-                className="px-6 py-3 bg-slate-950 hover:bg-slate-800 border border-slate-800 text-white font-bold rounded-xl text-xs transition"
-              >
-                Submit Additional Documents
-              </button>
-            </div>
-          </div>
-        ) : (
-          /* UPLOAD FORM */
-          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-8 backdrop-blur-xl">
-            
-            {/* Form Title */}
-            <div className="border-b border-slate-800/80 pb-6">
-              <h2 className="text-2xl font-extrabold text-white tracking-tight">Upload Required Documentation</h2>
-              <p className="text-xs text-slate-400 mt-1">
-                Bypass email attachment limits. Select a category, add your files, and transmit securely.
-              </p>
-            </div>
-
-            {/* Email Address Verification */}
-            <div>
-              <label className="block text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-2">
-                Your Email Address <span className="text-blue-400">*</span>
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
-            </div>
-
-            {/* Category Picker */}
-            <div>
-              <label className="block text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-2">
-                Document Category
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                {DOCUMENT_CATEGORIES.map((cat) => {
-                  const Icon = cat.icon;
-                  const isSelected = selectedCategory === cat.id;
-
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => setSelectedCategory(cat.id)}
-                      className={`p-3.5 rounded-xl border text-left flex items-center gap-3 transition-all ${
-                        isSelected
-                          ? 'bg-blue-600/10 border-blue-500 text-white font-bold'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-400' : 'text-slate-500'}`} />
-                      <span className="text-xs">{cat.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Drag & Drop Zone */}
-            <div
-              onDragOver={handleDragOver}
-              onDragLeave={handleDragLeave}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-              className={`p-8 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
-                isDragging
-                  ? 'border-blue-500 bg-blue-500/10 scale-[0.99]'
-                  : 'border-slate-800 hover:border-slate-700 bg-slate-950/50'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                onChange={handleFileSelect}
-              />
-              <div className="w-12 h-12 bg-blue-500/10 text-blue-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
-                <Upload className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-bold text-white">Click or Drag & Drop files here</h3>
-              <p className="text-xs text-slate-500 mt-1">Supports PDF, PNG, JPG, DOCX, XLSX up to 50MB</p>
-            </div>
-
-            {/* Error Message Alert */}
-            {errorMessage && (
-              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-xs text-red-400 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-
-            {/* File Staging List */}
-            {stagedFiles.length > 0 && (
-              <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Selected Files ({stagedFiles.length})
-                </h4>
-                <div className="space-y-2">
-                  {stagedFiles.map((item) => (
-                    <div
-                      key={item.id}
-                      className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl flex items-center justify-between gap-3 text-xs"
-                    >
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <File className="w-4 h-4 text-blue-400 shrink-0" />
-                        <div className="truncate">
-                          <p className="font-bold text-white truncate">{item.file.name}</p>
-                          <p className="text-[10px] text-slate-500 font-mono">
-                            {(item.file.size / (1024 * 1024)).toFixed(2)} MB • {item.category}
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 shrink-0">
-                        {item.status === 'uploading' && (
-                          <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
-                        )}
-                        {item.status === 'completed' && (
-                          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                        )}
-                        {item.status === 'pending' && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFile(item.id);
-                            }}
-                            className="p-1 text-slate-500 hover:text-white"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Submit Button */}
-            <div className="pt-4">
-              <button
-                type="button"
-                disabled={stagedFiles.length === 0 || isSubmitting}
-                onClick={handleUploadAll}
-                className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold rounded-2xl shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5"
-              >
-                {isSubmitting ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Encrypting & Uploading...</span>
-                  </>
-                ) : (
-                  <>
-                    <Lock className="w-4 h-4" />
-                    <span>Transmit Documents Securely</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-          </div>
-        )}
-
-      </main>
-
-      {/* FOOTER */}
       <footer className="py-6 border-t border-slate-900 text-center text-xs text-slate-600">
         <p>© {new Date().getFullYear()} Sean Leduc. All document transmissions are encrypted end-to-end.</p>
       </footer>
