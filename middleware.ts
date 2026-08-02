@@ -46,14 +46,14 @@ export async function middleware(request: NextRequest) {
   if (user) {
     const userIsAgent = isAgent(user.email);
 
-    // If an Agent goes to the client login or secret HQ login, route them to command center
-    if (userIsAgent && (pathname === '/login' || pathname === '/hq' || isClientPortalRoute)) {
+    // If an Agent accesses /login or /hq or /client-portal, send them directly to /portal
+    if (userIsAgent && (pathname === '/login' || isSecretHQRoute || isClientPortalRoute)) {
       url.pathname = '/portal';
       return NextResponse.redirect(url);
     }
 
-    // If a Client goes to the secret HQ, Agent portal, or client login, route them to client hub
-    if (!userIsAgent && (pathname === '/login' || pathname === '/hq' || isPortalRoute)) {
+    // If a Client attempts to access /hq or /portal, block & redirect to /client-portal
+    if (!userIsAgent && (isSecretHQRoute || isPortalRoute)) {
       url.pathname = '/client-portal';
       return NextResponse.redirect(url);
     }
