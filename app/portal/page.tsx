@@ -34,7 +34,9 @@ import {
   Trash2,
   DollarSign,
   ArrowUpDown,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileCheck,
+  Send
 } from 'lucide-react';
 
 interface Lead {
@@ -63,7 +65,7 @@ const STAGE_COLUMNS = [
 export default function PortalDashboard() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'funnel' | 'spreadsheet' | 'analytics'>('spreadsheet');
+  const [activeTab, setActiveTab] = useState<'spreadsheet' | 'funnel' | 'analytics'>('spreadsheet');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedPillar, setSelectedPillar] = useState<string>('all');
   const [userName, setUserName] = useState<string>('Agent');
@@ -79,6 +81,9 @@ export default function PortalDashboard() {
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [docSignLead, setDocSignLead] = useState<Lead | null>(null);
+  const [docTypeInput, setDocTypeInput] = useState('Executive Agreement');
+  const [isSendingDoc, setIsSendingDoc] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // New Lead Form State
@@ -130,7 +135,7 @@ export default function PortalDashboard() {
     router.push('/login');
   };
 
-  // --- SINGLE & BATCH UPDATE HANDLERS ---
+  // --- STAGE & BATCH UPDATES ---
   const handleStageChange = async (leadId: string, newStage: string) => {
     const { error } = await supabase
       .from('leads')
@@ -179,7 +184,7 @@ export default function PortalDashboard() {
     setIsSaving(false);
   };
 
-  // --- SAVE & CREATE HANDLERS ---
+  // --- SAVE & CREATE ---
   const handleSaveLead = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingLead) return;
@@ -236,7 +241,42 @@ export default function PortalDashboard() {
     setIsSaving(false);
   };
 
-  // --- SPREADSHEET CSV IMPORT & EXPORT ENGINE ---
+  // --- DOCUSIGN DISPATCH ENGINE ---
+  const handleSendDocuSign = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!docSignLead) return;
+    setIsSendingDoc(true);
+
+    try {
+      const recipientName = `${docSignLead.first_name || ''} ${docSignLead.last_name || ''}`.trim() || docSignLead.name || 'Client';
+
+      const res = await fetch('/api/docusign/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_id: docSignLead.id,
+          recipient_email: docSignLead.email,
+          recipient_name: recipientName,
+          document_type: docTypeInput,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        alert(`DocuSign Envelope Sent Successfully!\nEnvelope ID: ${data.envelopeId}`);
+        setDocSignLead(null);
+        fetchLeads();
+      } else {
+        alert(`DocuSign Error: ${data.error || 'Failed to dispatch envelope'}`);
+      }
+    } catch (err: any) {
+      alert(`Dispatch Error: ${err.message || 'Server error'}`);
+    } finally {
+      setIsSendingDoc(false);
+    }
+  };
+
+  // --- CSV IMPORT / EXPORT ENGINE ---
   const exportToCSV = () => {
     const leadsToExport = selectedLeadIds.length > 0
       ? leads.filter(l => selectedLeadIds.includes(l.id))
@@ -277,7 +317,7 @@ export default function PortalDashboard() {
         const text = e.target?.result as string;
         const lines = text.split(/\r\n|\n/);
         if (lines.length < 2) {
-          setImportStatus('Error: CSV file appears to be empty or missing rows.');
+          setImportStatus('Error: CSV file is empty or missing data rows.');
           return;
         }
 
@@ -313,14 +353,14 @@ export default function PortalDashboard() {
           setImportStatus(`Import Error: ${error?.message || 'Check CSV formatting'}`);
         }
       } catch (err) {
-        setImportStatus('Failed to process CSV layout.');
+        setImportStatus('Failed to process CSV file structure.');
       }
     };
 
     reader.readAsText(file);
   };
 
-  // 📇 Mobile Contact Export (.vcf file generation)
+  // vCard Export
   const downloadVCard = (lead: Lead) => {
     const fname = lead.first_name || lead.name || 'Lead';
     const lname = lead.last_name || '';
@@ -353,7 +393,7 @@ export default function PortalDashboard() {
     return 'new';
   };
 
-  // Filtered & Sorted Leads
+  // Filter & Sort
   const filteredLeads = leads
     .filter((lead) => {
       const fullName = `${lead.first_name || ''} ${lead.last_name || ''} ${lead.name || ''}`.toLowerCase();
@@ -373,7 +413,7 @@ export default function PortalDashboard() {
       return 0;
     });
 
-  // KPI & Metric Calculations
+  // KPI Calculations
   const totalLeads = leads.length;
   const totalPipelineValue = leads.reduce((sum, l) => sum + (l.estimated_value || 0), 0);
   const convertedCount = leads.filter(l => getNormalizedStage(l.stage) === 'converted').length;
@@ -383,7 +423,6 @@ export default function PortalDashboard() {
   const speakingCount = leads.filter(l => l.entity_pillar === 'speaking').length;
   const charityCount = leads.filter(l => l.entity_pillar === 'charity').length;
 
-  // Toggle Selection
   const toggleSelectAll = () => {
     if (selectedLeadIds.length === filteredLeads.length) {
       setSelectedLeadIds([]);
@@ -419,23 +458,21 @@ export default function PortalDashboard() {
         <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             
-            {/* Brand Header */}
             <div className="flex items-center gap-4">
               <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 border border-white/10">
                 <Sparkles className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-extrabold tracking-tight text-white text-lg">TIS Enterprise Portal</span>
+                  <span className="font-extrabold tracking-tight text-white text-lg">TIS Command Portal</span>
                   <span className="hidden sm:inline-flex items-center gap-1 text-[10px] font-bold tracking-wider uppercase text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
-                    <ShieldCheck className="w-3 h-3" /> Firewalled RLS
+                    <ShieldCheck className="w-3 h-3" /> Enterprise RLS
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">The Inclusion Strategist • Multi-Vertical Platform</p>
+                <p className="text-[11px] text-slate-400">The Inclusion Strategist • Multi-Vertical Center</p>
               </div>
             </div>
 
-            {/* Right Quick Actions & Profile */}
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setIsAddModalOpen(true)}
@@ -463,13 +500,12 @@ export default function PortalDashboard() {
         </div>
       </header>
 
-      {/* DASHBOARD BODY */}
+      {/* BODY CONTAINER */}
       <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 py-6 flex-1 w-full space-y-6">
         
-        {/* VIEW TOOLBAR & SPREADSHEET CONTROLS */}
+        {/* TOOLBAR & TABS */}
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
           
-          {/* Navigation Tabs */}
           <div className="flex items-center bg-slate-900 p-1.5 rounded-2xl border border-slate-800 self-start">
             <button
               onClick={() => setActiveTab('spreadsheet')}
@@ -502,7 +538,6 @@ export default function PortalDashboard() {
             </button>
           </div>
 
-          {/* Search, Filters, CSV Import/Export */}
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative flex-1 min-w-[240px]">
               <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
@@ -515,7 +550,6 @@ export default function PortalDashboard() {
               />
             </div>
 
-            {/* Pillar Filter Tabs */}
             <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
               {[
                 { id: 'all', label: 'All' },
@@ -535,7 +569,6 @@ export default function PortalDashboard() {
               ))}
             </div>
 
-            {/* CSV Import/Export Buttons */}
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setIsImportModalOpen(true)}
@@ -549,7 +582,7 @@ export default function PortalDashboard() {
               <button
                 onClick={exportToCSV}
                 className="px-3 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white rounded-xl text-xs font-semibold transition flex items-center gap-2"
-                title="Export Filtered CSV File"
+                title="Export CSV File"
               >
                 <Download className="w-3.5 h-3.5 text-emerald-400" />
                 <span className="hidden sm:inline">Export CSV</span>
@@ -558,7 +591,7 @@ export default function PortalDashboard() {
               <button
                 onClick={fetchLeads}
                 className="p-2 bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 rounded-xl transition"
-                title="Refresh Pipeline"
+                title="Refresh Database"
               >
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               </button>
@@ -567,7 +600,7 @@ export default function PortalDashboard() {
 
         </div>
 
-        {/* METRICS & FINANCIAL KPI STRIP */}
+        {/* METRIC STRIP */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
             <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
@@ -576,7 +609,7 @@ export default function PortalDashboard() {
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-2xl font-extrabold text-white">${totalPipelineValue.toLocaleString()}</span>
-              <span className="text-xs text-emerald-400 font-medium">gross potential</span>
+              <span className="text-xs text-emerald-400 font-medium">gross volume</span>
             </div>
           </div>
 
@@ -587,24 +620,24 @@ export default function PortalDashboard() {
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-2xl font-extrabold text-white">{totalLeads}</span>
-              <span className="text-xs text-slate-500">active records</span>
+              <span className="text-xs text-slate-500">records</span>
             </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
             <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-              <span>Conversion Velocity</span>
+              <span>Conversion Rate</span>
               <TrendingUp className="w-4 h-4 text-purple-400" />
             </div>
             <div className="mt-2 flex items-baseline gap-2">
               <span className="text-2xl font-extrabold text-white">{conversionRate}%</span>
-              <span className="text-xs text-purple-400 font-medium">closed-won ratio</span>
+              <span className="text-xs text-purple-400 font-medium">closed-won</span>
             </div>
           </div>
 
           <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800/80 backdrop-blur-xl">
             <div className="flex items-center justify-between text-xs text-slate-400 font-semibold uppercase tracking-wider">
-              <span>Pillar Distribution</span>
+              <span>Pillar Split</span>
               <Briefcase className="w-4 h-4 text-amber-400" />
             </div>
             <div className="mt-2 text-xs text-slate-300 font-mono flex items-center justify-between pt-1">
@@ -615,9 +648,9 @@ export default function PortalDashboard() {
           </div>
         </div>
 
-        {/* BATCH ACTION FLOATING BAR (Appears when checkboxes are selected) */}
+        {/* BATCH ACTION FLOATING BAR */}
         {selectedLeadIds.length > 0 && (
-          <div className="p-3 bg-blue-600/10 border border-blue-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-4 backdrop-blur-xl animate-fade-in">
+          <div className="p-3 bg-blue-600/10 border border-blue-500/30 rounded-2xl flex flex-wrap items-center justify-between gap-4 backdrop-blur-xl">
             <div className="flex items-center gap-3 text-xs text-blue-300 font-bold">
               <CheckSquare className="w-4 h-4 text-blue-400" />
               <span>{selectedLeadIds.length} lead(s) selected</span>
@@ -655,7 +688,7 @@ export default function PortalDashboard() {
           </div>
         )}
 
-        {/* TAB 1: SPREADSHEET GRID VIEW */}
+        {/* TAB 1: SPREADSHEET GRID */}
         {activeTab === 'spreadsheet' && (
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
             <div className="overflow-x-auto">
@@ -677,7 +710,7 @@ export default function PortalDashboard() {
                         <ArrowUpDown className="w-3 h-3 text-slate-500" />
                       </div>
                     </th>
-                    <th className="py-3.5 px-4">Contact Info & Phone</th>
+                    <th className="py-3.5 px-4">Contact & Phone</th>
                     <th className="py-3.5 px-4">Pillar</th>
                     <th className="py-3.5 px-4">Sub-Track</th>
                     <th className="py-3.5 px-4">Funnel Stage</th>
@@ -695,13 +728,13 @@ export default function PortalDashboard() {
                     <tr>
                       <td colSpan={8} className="py-20 text-center text-slate-400">
                         <Loader2 className="w-6 h-6 text-blue-500 animate-spin mx-auto mb-2" />
-                        <span>Syncing spreadsheet rows...</span>
+                        <span>Syncing database records...</span>
                       </td>
                     </tr>
                   ) : filteredLeads.length === 0 ? (
                     <tr>
                       <td colSpan={8} className="py-16 text-center text-slate-500 font-sans">
-                        No rows match your criteria. Click <strong>"Add Opportunity"</strong> or <strong>"Import CSV"</strong> above.
+                        No rows found matching criteria. Click <strong>"Add Opportunity"</strong> above.
                       </td>
                     </tr>
                   ) : (
@@ -711,20 +744,17 @@ export default function PortalDashboard() {
 
                       return (
                         <tr key={lead.id} className={`hover:bg-slate-800/50 transition ${isSelected ? 'bg-blue-500/5' : ''}`}>
-                          {/* Checkbox Column */}
                           <td className="py-3 px-4 text-center">
                             <button onClick={() => toggleSelectLead(lead.id)} className="text-slate-400 hover:text-white">
                               {isSelected ? <CheckSquare className="w-4 h-4 text-blue-400" /> : <Square className="w-4 h-4" />}
                             </button>
                           </td>
 
-                          {/* Name */}
                           <td className="py-3 px-4 font-sans">
                             <div className="font-bold text-white text-sm">{displayName}</div>
                             {lead.notes && <div className="text-[10px] text-slate-500 truncate max-w-[180px]">{lead.notes}</div>}
                           </td>
 
-                          {/* Email / Phone */}
                           <td className="py-3 px-4 font-sans">
                             <div className="text-slate-300">{lead.email}</div>
                             {lead.phone ? (
@@ -737,10 +767,8 @@ export default function PortalDashboard() {
                             )}
                           </td>
 
-                          {/* Pillar */}
                           <td className="py-3 px-4 font-sans">{getPillarBadge(lead.entity_pillar)}</td>
 
-                          {/* Sub Track */}
                           <td className="py-3 px-4 text-slate-400 font-sans">
                             {lead.sub_track ? (
                               <span className="bg-slate-950 border border-slate-800 px-2 py-0.5 rounded text-[11px]">
@@ -751,12 +779,11 @@ export default function PortalDashboard() {
                             )}
                           </td>
 
-                          {/* Funnel Stage Dropdown */}
                           <td className="py-3 px-4 font-sans">
                             <select
                               value={getNormalizedStage(lead.stage)}
                               onChange={(e) => handleStageChange(lead.id, e.target.value)}
-                              className="bg-slate-950 border border-slate-800 text-xs text-slate-300 font-semibold rounded-lg px-2.5 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 cursor-pointer hover:bg-slate-800 transition"
+                              className="bg-slate-950 border border-slate-800 text-xs text-slate-300 font-semibold rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer hover:bg-slate-800 transition"
                             >
                               <option value="new">New Opportunity</option>
                               <option value="nurture">Active Nurture</option>
@@ -765,21 +792,31 @@ export default function PortalDashboard() {
                             </select>
                           </td>
 
-                          {/* Deal Value */}
                           <td className="py-3 px-4 text-emerald-400 font-bold font-mono">
                             ${(lead.estimated_value || 0).toLocaleString()}
                           </td>
 
-                          {/* Actions */}
                           <td className="py-3 px-4 text-right font-sans">
                             <div className="flex items-center justify-end gap-1.5">
+                              {/* DocuSign Trigger */}
+                              <button
+                                onClick={() => setDocSignLead(lead)}
+                                className="p-1.5 bg-slate-950 border border-slate-800 hover:border-blue-500/50 text-slate-400 hover:text-blue-400 rounded-lg transition"
+                                title="Send DocuSign eSignature Contract"
+                              >
+                                <FileCheck className="w-3.5 h-3.5" />
+                              </button>
+
+                              {/* vCard Export */}
                               <button
                                 onClick={() => downloadVCard(lead)}
                                 className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-blue-400 rounded-lg transition"
-                                title="Export Contact to Phone (.vcf)"
+                                title="Export Contact to Mobile Phone (.vcf)"
                               >
                                 <Download className="w-3.5 h-3.5" />
                               </button>
+
+                              {/* Edit Modal */}
                               <button
                                 onClick={() => setEditingLead(lead)}
                                 className="p-1.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-400 hover:text-white rounded-lg transition"
@@ -799,7 +836,7 @@ export default function PortalDashboard() {
           </div>
         )}
 
-        {/* TAB 2: KANBAN FUNNEL BOARD VIEW */}
+        {/* TAB 2: KANBAN FUNNEL BOARD */}
         {activeTab === 'funnel' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-start">
             {STAGE_COLUMNS.map((col) => {
@@ -830,9 +867,14 @@ export default function PortalDashboard() {
                               ${(lead.estimated_value || 0).toLocaleString()}
                             </span>
                           </div>
-                          <button onClick={() => setEditingLead(lead)} className="p-1.5 text-slate-400 hover:text-white bg-slate-800 rounded-lg">
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => setDocSignLead(lead)} className="p-1.5 text-slate-400 hover:text-blue-400 bg-slate-800 rounded-lg" title="Send DocuSign">
+                              <FileCheck className="w-3.5 h-3.5" />
+                            </button>
+                            <button onClick={() => setEditingLead(lead)} className="p-1.5 text-slate-400 hover:text-white bg-slate-800 rounded-lg">
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
 
                         <div className="space-y-1 text-xs text-slate-400">
@@ -876,7 +918,7 @@ export default function PortalDashboard() {
             <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
               <h3 className="font-bold text-lg text-white flex items-center gap-2">
                 <BarChart3 className="w-5 h-5 text-blue-400" />
-                <span>Pillar Market Share</span>
+                <span>Pillar Market Distribution</span>
               </h3>
 
               <div className="space-y-4">
@@ -915,7 +957,7 @@ export default function PortalDashboard() {
             <div className="p-6 rounded-2xl bg-slate-900 border border-slate-800 space-y-6">
               <h3 className="font-bold text-lg text-white flex items-center gap-2">
                 <TrendingUp className="w-5 h-5 text-emerald-400" />
-                <span>Conversion Funnel Breakdown</span>
+                <span>Stage Velocity & Breakdown</span>
               </h3>
 
               <div className="space-y-4">
@@ -942,6 +984,67 @@ export default function PortalDashboard() {
         )}
 
       </div>
+
+      {/* DOCUSIGN DISPATCH MODAL */}
+      {docSignLead && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <FileCheck className="w-5 h-5 text-blue-400" />
+                <span>Dispatch DocuSign Envelope</span>
+              </h3>
+              <button onClick={() => setDocSignLead(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSendDocuSign} className="space-y-4 text-xs">
+              <div>
+                <label className="block text-slate-400 uppercase font-semibold mb-1">Recipient Name</label>
+                <input
+                  type="text"
+                  disabled
+                  value={`${docSignLead.first_name || ''} ${docSignLead.last_name || ''}`.trim() || docSignLead.name || 'Client'}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white opacity-70 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 uppercase font-semibold mb-1">Recipient Email</label>
+                <input
+                  type="email"
+                  disabled
+                  value={docSignLead.email}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white opacity-70 cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 uppercase font-semibold mb-1">Document Agreement Title</label>
+                <input
+                  type="text"
+                  required
+                  value={docTypeInput}
+                  onChange={(e) => setDocTypeInput(e.target.value)}
+                  placeholder="e.g. Financial Disclosure, Speaking Rider"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <button type="button" onClick={() => setDocSignLead(null)} className="px-4 py-2 bg-slate-950 border border-slate-800 text-slate-300 rounded-xl font-semibold">
+                  Cancel
+                </button>
+                <button type="submit" disabled={isSendingDoc} className="px-5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl flex items-center gap-2 shadow-lg shadow-blue-600/20">
+                  {isSendingDoc ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  <span>Dispatch via DocuSign</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* CREATE NEW LEAD MODAL */}
       {isAddModalOpen && (
