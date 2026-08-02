@@ -5,14 +5,17 @@ import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
 import {
   Sparkles,
-  Lock,
   Mail,
   ArrowRight,
   ShieldCheck,
   Loader2,
   KeyRound,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Briefcase,
+  Mic,
+  Heart,
+  Command
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -62,7 +65,6 @@ export default function LoginPage() {
 
     try {
       if (isMagicLink) {
-        // Passwordless Magic Link Login
         const { error } = await supabase.auth.signInWithOtp({
           email: email.trim(),
           options: {
@@ -77,7 +79,6 @@ export default function LoginPage() {
           text: 'Secure login link dispatched! Please check your email inbox.',
         });
       } else {
-        // Standard Email + Password Auth
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -100,57 +101,106 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col justify-between antialiased selection:bg-blue-600 selection:text-white relative overflow-hidden">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex antialiased selection:bg-blue-600 selection:text-white">
       
-      {/* Background Lighting Effects */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[700px] bg-gradient-to-tr from-blue-600/15 via-indigo-600/10 to-purple-600/10 rounded-full blur-[140px] pointer-events-none" />
+      {/* LEFT PANEL: Enterprise Branding (Hidden on mobile/tablet) */}
+      <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-12 border-r border-slate-800/60 bg-slate-950">
+        
+        {/* Dynamic Mesh Gradient Background */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
+          <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-blue-600/10 blur-[120px]" />
+          <div className="absolute top-[40%] -right-[20%] w-[60%] h-[60%] rounded-full bg-indigo-600/10 blur-[120px]" />
+          <div className="absolute -bottom-[20%] left-[20%] w-[80%] h-[80%] rounded-full bg-emerald-600/5 blur-[120px]" />
+          {/* Subtle Grid Overlay */}
+          <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
+        </div>
 
-      {/* HEADER */}
-      <header className="p-6 border-b border-slate-900/80">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-purple-600 flex items-center justify-center text-white font-bold shadow-lg shadow-blue-500/20 border border-white/10">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <span className="font-extrabold tracking-tight text-white text-base">Sean Leduc</span>
-              <p className="text-[11px] text-slate-400">The Inclusion Strategist Platform</p>
-            </div>
+        {/* Top Header */}
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 border border-white/10">
+            <Command className="w-5 h-5 text-white" />
           </div>
-
-          <div className="flex items-center gap-2 text-xs font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-3 py-1.5 rounded-full">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Encrypted Gateway</span>
+          <div>
+            <h1 className="font-extrabold tracking-tight text-white text-xl">The Inclusion Strategist</h1>
+            <p className="text-[11px] text-slate-400 uppercase tracking-widest font-semibold mt-0.5">Command Center</p>
           </div>
         </div>
-      </header>
 
-      {/* LOGIN CARD */}
-      <main className="flex-1 flex items-center justify-center p-4 z-10">
-        <div className="w-full max-w-md bg-slate-900/90 border border-slate-800 rounded-3xl p-8 shadow-2xl backdrop-blur-xl space-y-8">
-          
-          {/* Card Header */}
-          <div className="text-center space-y-2">
-            <div className="w-12 h-12 bg-blue-600/10 border border-blue-500/20 rounded-2xl flex items-center justify-center mx-auto text-blue-400 shadow-inner">
-              <Lock className="w-6 h-6" />
+        {/* Center Hero Copy */}
+        <div className="relative z-10 space-y-6 max-w-lg">
+          <h2 className="text-4xl font-extrabold text-white leading-tight">
+            Architecting legacy through financial strategy and global influence.
+          </h2>
+          <p className="text-slate-400 text-lg leading-relaxed">
+            Welcome to the centralized executive hub. Securely manage wealth portfolios, speaking engagements, and philanthropic initiatives from one encrypted interface.
+          </p>
+
+          <div className="flex flex-col gap-4 pt-4">
+            <div className="flex items-center gap-4 text-sm font-medium text-slate-300">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <Briefcase className="w-4 h-4" />
+              </div>
+              Executive Wealth Management
             </div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight">Portal Access Gateway</h1>
-            <p className="text-xs text-slate-400">Enter your credentials to access your executive workspace.</p>
+            <div className="flex items-center gap-4 text-sm font-medium text-slate-300">
+              <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                <Mic className="w-4 h-4" />
+              </div>
+              Global Keynotes & Workshops
+            </div>
+            <div className="flex items-center gap-4 text-sm font-medium text-slate-300">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Heart className="w-4 h-4" />
+              </div>
+              Philanthropic Foundations
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom Footer */}
+        <div className="relative z-10 flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-full w-max shadow-lg shadow-emerald-900/20">
+          <ShieldCheck className="w-4 h-4" />
+          <span>AES-256 Encrypted Environment</span>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL: Auth Form */}
+      <div className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
+        
+        {/* Mobile Background Glow (Visible only on small screens) */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-gradient-to-b from-blue-600/5 to-transparent rounded-full blur-[100px] lg:hidden pointer-events-none" />
+
+        <div className="w-full max-w-sm space-y-8 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          
+          {/* Mobile Header (Hidden on Desktop) */}
+          <div className="flex items-center gap-3 justify-center lg:hidden mb-8">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 border border-white/10">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left">
+              <h1 className="font-extrabold tracking-tight text-white text-lg">Sean Leduc</h1>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Command Center</p>
+            </div>
           </div>
 
-          {/* Mode Switcher (Password vs Magic Link) */}
-          <div className="grid grid-cols-2 p-1 bg-slate-950 border border-slate-800 rounded-xl text-xs font-bold">
+          <div className="text-center lg:text-left space-y-2">
+            <h2 className="text-2xl font-extrabold text-white tracking-tight">Welcome Back</h2>
+            <p className="text-sm text-slate-400">Authenticate to access your workspace.</p>
+          </div>
+
+          {/* Mode Switcher */}
+          <div className="flex p-1 bg-slate-900/80 border border-slate-800 rounded-xl text-xs font-bold backdrop-blur-md">
             <button
               type="button"
               onClick={() => setIsMagicLink(false)}
-              className={`py-2 rounded-lg transition ${!isMagicLink ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-2.5 rounded-lg transition-all duration-300 ${!isMagicLink ? 'bg-slate-800 text-white shadow-md border border-slate-700/50' : 'text-slate-400 hover:text-white'}`}
             >
-              Password Login
+              Password
             </button>
             <button
               type="button"
               onClick={() => setIsMagicLink(true)}
-              className={`py-2 rounded-lg transition ${isMagicLink ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-white'}`}
+              className={`flex-1 py-2.5 rounded-lg transition-all duration-300 ${isMagicLink ? 'bg-slate-800 text-white shadow-md border border-slate-700/50' : 'text-slate-400 hover:text-white'}`}
             >
               Magic Link
             </button>
@@ -158,49 +208,48 @@ export default function LoginPage() {
 
           {/* Alert Message */}
           {message && (
-            <div className={`p-4 rounded-2xl border text-xs flex items-center gap-3 ${
+            <div className={`p-4 rounded-xl border text-xs flex items-start gap-3 animate-in fade-in ${
               message.type === 'error' 
                 ? 'bg-red-500/10 border-red-500/20 text-red-400' 
                 : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
             }`}>
-              {message.type === 'error' ? <AlertCircle className="w-4 h-4 shrink-0" /> : <CheckCircle2 className="w-4 h-4 shrink-0" />}
-              <span>{message.text}</span>
+              {message.type === 'error' ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />}
+              <span className="leading-relaxed">{message.text}</span>
             </div>
           )}
 
           {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-4 text-xs">
-            <div>
-              <label className="block uppercase font-extrabold tracking-wider text-slate-400 mb-1.5">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+          <form onSubmit={handleLogin} className="space-y-5">
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-400 ml-1">Email Address</label>
+              <div className="relative group">
+                <Mail className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full pl-11 pr-4 py-3.5 bg-slate-900/50 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all duration-300"
                 />
               </div>
             </div>
 
             {!isMagicLink && (
-              <div>
-                <label className="block uppercase font-extrabold tracking-wider text-slate-400 mb-1.5">
-                  Password
-                </label>
-                <div className="relative">
-                  <KeyRound className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500" />
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between ml-1">
+                  <label className="block text-xs font-bold text-slate-400">Password</label>
+                  <a href="#" className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors">Forgot password?</a>
+                </div>
+                <div className="relative group">
+                  <KeyRound className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
                   <input
                     type="password"
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"
-                    className="w-full pl-10 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900/50 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all duration-300"
                   />
                 </div>
               </div>
@@ -209,29 +258,25 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white font-extrabold rounded-2xl shadow-xl shadow-blue-600/25 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5 text-sm mt-6"
+              className="w-full py-3.5 mt-2 bg-white hover:bg-slate-100 text-slate-950 disabled:opacity-50 font-extrabold rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm"
             >
               {loading ? (
-                <>
-                  <Loader2 className="w-5 h-5 animate-spin" />
-                  <span>Authenticating...</span>
-                </>
+                <Loader2 className="w-5 h-5 animate-spin text-slate-950" />
               ) : (
                 <>
-                  <span>{isMagicLink ? 'Send Magic Access Link' : 'Authenticate & Enter'}</span>
+                  <span>{isMagicLink ? 'Send Access Link' : 'Sign In'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </>
               )}
             </button>
           </form>
 
-        </div>
-      </main>
+          <p className="text-center text-xs text-slate-500 pt-6">
+            By continuing, you agree to the <a href="#" className="text-slate-400 hover:text-white underline decoration-slate-700 underline-offset-2">Terms of Service</a> and <a href="#" className="text-slate-400 hover:text-white underline decoration-slate-700 underline-offset-2">Privacy Policy</a>.
+          </p>
 
-      {/* FOOTER */}
-      <footer className="py-6 border-t border-slate-900 text-center text-xs text-slate-600">
-        <p>© {new Date().getFullYear()} Sean Leduc. Multi-vertical command system.</p>
-      </footer>
+        </div>
+      </div>
     </div>
   );
 }
