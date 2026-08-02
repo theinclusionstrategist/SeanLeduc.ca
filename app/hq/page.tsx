@@ -3,9 +3,22 @@
 import { useState, useEffect } from 'react';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 import { useRouter } from 'next/navigation';
-import { Sparkles, Mail, ArrowRight, ShieldCheck, Loader2, KeyRound, CheckCircle2, AlertCircle, Briefcase, Mic, Heart, Command } from 'lucide-react';
+import {
+  Sparkles,
+  Mail,
+  ArrowRight,
+  ShieldCheck,
+  Loader2,
+  KeyRound,
+  CheckCircle2,
+  AlertCircle,
+  Briefcase,
+  Mic,
+  Heart,
+  Command
+} from 'lucide-react';
 
-export default function SecretAgentGateway() {
+export default function AgentHQLoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isMagicLink, setIsMagicLink] = useState(false);
@@ -15,6 +28,35 @@ export default function SecretAgentGateway() {
   const supabase = createClientComponentClient();
   const router = useRouter();
 
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        routeUserByRole(session.user.email);
+      }
+    };
+    checkSession();
+  }, []);
+
+  const routeUserByRole = (userEmail?: string) => {
+    if (!userEmail) return;
+
+    const adminEmails = [
+      'sean@seanleduc.ca',
+      'shaun@seanleduc.ca',
+      'agent@seanleduc.ca',
+      'theinclusionstrategist@gmail.com'
+    ];
+
+    const isAgent = adminEmails.includes(userEmail.toLowerCase().trim()) || userEmail.endsWith('@seanleduc.ca');
+
+    if (isAgent) {
+      router.push('/portal');
+    } else {
+      router.push('/client-portal');
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -22,16 +64,36 @@ export default function SecretAgentGateway() {
 
     try {
       if (isMagicLink) {
-        const { error } = await supabase.auth.signInWithOtp({ email: email.trim(), options: { emailRedirectTo: `${window.location.origin}/hq` } });
+        const { error } = await supabase.auth.signInWithOtp({
+          email: email.trim(),
+          options: {
+            emailRedirectTo: `${window.location.origin}/hq`,
+          },
+        });
+
         if (error) throw error;
-        setMessage({ type: 'success', text: 'Secure login link dispatched!' });
+
+        setMessage({
+          type: 'success',
+          text: 'Agent access link dispatched! Check your email inbox.',
+        });
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
+
         if (error) throw error;
-        router.push('/portal'); // Send directly to the hidden portal
+
+        if (data.session) {
+          routeUserByRole(data.session.user.email);
+        }
       }
     } catch (err: any) {
-      setMessage({ type: 'error', text: err.message || 'Authentication failed.' });
+      setMessage({
+        type: 'error',
+        text: err.message || 'Authentication failed. Please verify credentials.',
+      });
     } finally {
       setLoading(false);
     }
@@ -39,66 +101,162 @@ export default function SecretAgentGateway() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex antialiased selection:bg-blue-600 selection:text-white">
-      {/* LEFT PANEL: Internal Enterprise Branding */}
+      
+      {/* LEFT PANEL: Internal HQ Branding */}
       <div className="hidden lg:flex w-1/2 relative overflow-hidden flex-col justify-between p-12 border-r border-slate-800/60 bg-slate-950">
+        
         <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
           <div className="absolute -top-[20%] -left-[10%] w-[70%] h-[70%] rounded-full bg-blue-600/10 blur-[120px]" />
           <div className="absolute top-[40%] -right-[20%] w-[60%] h-[60%] rounded-full bg-indigo-600/10 blur-[120px]" />
+          <div className="absolute -bottom-[20%] left-[20%] w-[80%] h-[80%] rounded-full bg-emerald-600/5 blur-[120px]" />
           <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]" />
         </div>
 
         <div className="relative z-10 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center shadow-lg border border-white/10">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 border border-white/10">
             <Command className="w-5 h-5 text-white" />
           </div>
           <div>
             <h1 className="font-extrabold tracking-tight text-white text-xl">System HQ</h1>
-            <p className="text-[11px] text-slate-400 uppercase tracking-widest font-semibold mt-0.5">Authorized Personnel Only</p>
+            <p className="text-[11px] text-slate-400 uppercase tracking-widest font-semibold mt-0.5">Authorized Agents Only</p>
           </div>
         </div>
 
         <div className="relative z-10 space-y-6 max-w-lg">
-          <h2 className="text-4xl font-extrabold text-white leading-tight">Master Command Center</h2>
+          <h2 className="text-4xl font-extrabold text-white leading-tight">
+            Master Command Gateway
+          </h2>
           <p className="text-slate-400 text-lg leading-relaxed">
-            Internal gateway for managing enterprise wealth portfolios, speaking engagements, and CRM routing.
+            Internal terminal for managing high-net-worth pipelines, speaking schedules, and automated contract lifecycles.
           </p>
+
+          <div className="flex flex-col gap-4 pt-4">
+            <div className="flex items-center gap-4 text-sm font-medium text-slate-300">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                <Briefcase className="w-4 h-4" />
+              </div>
+              Financial Strategy Pipeline
+            </div>
+            <div className="flex items-center gap-4 text-sm font-medium text-slate-300">
+              <div className="w-8 h-8 rounded-lg bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+                <Mic className="w-4 h-4" />
+              </div>
+              Keynote Engagements
+            </div>
+            <div className="flex items-center gap-4 text-sm font-medium text-slate-300">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
+                <Heart className="w-4 h-4" />
+              </div>
+              Philanthropic Operations
+            </div>
+          </div>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2 text-xs font-bold text-red-400 bg-red-500/10 border border-red-500/20 px-4 py-2 rounded-full w-max">
+        <div className="relative z-10 flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-4 py-2 rounded-full w-max shadow-lg shadow-emerald-900/20">
           <ShieldCheck className="w-4 h-4" />
-          <span>Restricted Network Access</span>
+          <span>AES-256 Encrypted Internal Access</span>
         </div>
       </div>
 
       {/* RIGHT PANEL: Auth Form */}
       <div className="flex-1 flex items-center justify-center p-6 relative overflow-hidden">
-        <div className="w-full max-w-sm space-y-8 relative z-10">
-          <div className="text-center lg:text-left space-y-2">
-            <h2 className="text-2xl font-extrabold text-white tracking-tight">Agent Login</h2>
-            <p className="text-sm text-slate-400">Enter your internal credentials.</p>
+        
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full bg-gradient-to-b from-blue-600/5 to-transparent rounded-full blur-[100px] lg:hidden pointer-events-none" />
+
+        <div className="w-full max-w-sm space-y-8 relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          
+          <div className="flex items-center gap-3 justify-center lg:hidden mb-8">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/20 border border-white/10">
+              <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div className="text-left">
+              <h1 className="font-extrabold tracking-tight text-white text-lg">Agent HQ</h1>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-semibold">Command Center</p>
+            </div>
           </div>
+
+          <div className="text-center lg:text-left space-y-2">
+            <h2 className="text-2xl font-extrabold text-white tracking-tight">Agent Gateway</h2>
+            <p className="text-sm text-slate-400">Authenticate to enter internal command.</p>
+          </div>
+
+          <div className="flex p-1 bg-slate-900/80 border border-slate-800 rounded-xl text-xs font-bold backdrop-blur-md">
+            <button
+              type="button"
+              onClick={() => setIsMagicLink(false)}
+              className={`flex-1 py-2.5 rounded-lg transition-all duration-300 ${!isMagicLink ? 'bg-slate-800 text-white shadow-md border border-slate-700/50' : 'text-slate-400 hover:text-white'}`}
+            >
+              Password
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsMagicLink(true)}
+              className={`flex-1 py-2.5 rounded-lg transition-all duration-300 ${isMagicLink ? 'bg-slate-800 text-white shadow-md border border-slate-700/50' : 'text-slate-400 hover:text-white'}`}
+            >
+              Magic Link
+            </button>
+          </div>
+
+          {message && (
+            <div className={`p-4 rounded-xl border text-xs flex items-start gap-3 animate-in fade-in ${
+              message.type === 'error' 
+                ? 'bg-red-500/10 border-red-500/20 text-red-400' 
+                : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+            }`}>
+              {message.type === 'error' ? <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" /> : <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />}
+              <span className="leading-relaxed">{message.text}</span>
+            </div>
+          )}
 
           <form onSubmit={handleLogin} className="space-y-5">
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-400 ml-1">Agent Email</label>
               <div className="relative group">
-                <Mail className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-11 pr-4 py-3.5 bg-slate-900/50 border border-slate-800 rounded-xl text-sm text-white focus:ring-1 focus:ring-red-500" />
+                <Mail className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="agent@seanleduc.ca"
+                  className="w-full pl-11 pr-4 py-3.5 bg-slate-900/50 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all duration-300"
+                />
               </div>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-400 ml-1">Admin Password</label>
-              <div className="relative group">
-                <KeyRound className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-11 pr-4 py-3.5 bg-slate-900/50 border border-slate-800 rounded-xl text-sm text-white focus:ring-1 focus:ring-red-500" />
+            {!isMagicLink && (
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-400 ml-1">Password</label>
+                <div className="relative group">
+                  <KeyRound className="w-4 h-4 absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-400 transition-colors" />
+                  <input
+                    type="password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••••••"
+                    className="w-full pl-11 pr-4 py-3.5 bg-slate-900/50 border border-slate-800 rounded-xl text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/50 focus:ring-1 focus:ring-blue-500/50 transition-all duration-300"
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
-            <button type="submit" disabled={loading} className="w-full py-3.5 mt-2 bg-white hover:bg-slate-100 text-slate-950 font-extrabold rounded-xl flex items-center justify-center gap-2 transition-all">
-              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <span>Access HQ</span>}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 mt-2 bg-white hover:bg-slate-100 text-slate-950 disabled:opacity-50 font-extrabold rounded-xl shadow-[0_0_20px_rgba(255,255,255,0.1)] flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5 active:translate-y-0 text-sm"
+            >
+              {loading ? (
+                <Loader2 className="w-5 h-5 animate-spin text-slate-950" />
+              ) : (
+                <>
+                  <span>{isMagicLink ? 'Send HQ Link' : 'Access HQ Command'}</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
+
         </div>
       </div>
     </div>
